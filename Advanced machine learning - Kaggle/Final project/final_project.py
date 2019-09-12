@@ -5,6 +5,10 @@ import pandas as pd
 import numpy as np
 import PyQt5
 import statsmodels.api as sm
+import statsmodels.formula.api as smf
+import statsmodels.tsa.api as smt
+import scipy.stats as scs
+
 from pylab import rcParams
 import itertools
 from statsmodels.tsa.arima_model import ARIMA
@@ -16,9 +20,11 @@ from statsmodels.tsa.stattools import adfuller, acf, pacf,arma_order_select_ic
 # os.chdir("C:/Lin/Data science/Py training/Python DS handbook")
 
 """
-A good exercise is to reproduce previous_value_benchmark. As the name suggest - in this benchmark for the each shop/item pair our predictions are just monthly sales from the previous month, i.e. October 2015.
+A good exercise is to reproduce previous_value_benchmark. As the name suggest - in this benchmark for the each shop/item pair our
+predictions are just monthly sales from the previous month, i.e. October 2015.
 
-The most important step at reproducing this score is correctly aggregating daily data and constructing monthly sales data frame. You need to get lagged values, fill NaNs with zeros and clip the values into [0,20] range. If you do it correctly, you'll get precisely 1.16777 on the public leaderboard.
+The most important step at reproducing this score is correctly aggregating daily data and constructing monthly sales data frame.
+You need to get lagged values, fill NaNs with zeros and clip the values into [0,20] range. If you do it correctly, you'll get precisely 1.16777 on the public leaderboard.
 
 Generating features like this is a necessary basis for more complex models. Also, if you decide to fit some model, don't forget to clip the target into [0,20] range, it makes a big difference.
 """
@@ -156,7 +162,7 @@ def tsplot(y, lags=None, figsize=(10, 8), style='bmh',title=''):
         plt.tight_layout()
     return
 
-# Simulate a AR(1) process
+# Simulate a AR(1) process with Alpha = 0.6
 np.random.seed(1)
 n_samples = int(1000)
 a = 0.6
@@ -167,13 +173,79 @@ for t in range(n_samples):
 limit=12
 _ = tsplot(x, lags=limit,title="AR(1)process")
 
+# Simulate a AR(2) process
+n = int(1000)
+alphas = np.array([.444, .333])
+betas = np.array([0.])
+
+# Python requires us to specify the zero-lag value which is 1
+# Also note that the alphas for the AR model must be negated
+# We also set the betas for the MA equal to 0 for an AR(p) model
+# For more information see the examples at statsmodels.org
+ar = np.r_[1, -alphas]
+ma = np.r_[1, betas]
+
+ar2 = smt.arma_generate_sample(ar=ar, ma=ma, nsample=n)
+_ = tsplot(ar2, lags=12,title="AR(2) process")
+
+# Simulate an MA(1) process
+n = int(1000)
+# set the AR(p) alphas equal to 0
+alphas = np.array([0.])
+betas = np.array([0.8])
+# add zero-lag and negate alphas
+ar = np.r_[1, -alphas]
+ma = np.r_[1, betas]
+ma1 = smt.arma_generate_sample(ar=ar, ma=ma, nsample=n)
+limit=12
+_ = tsplot(ma1, lags=limit,title="MA(1) process")
+
+# Simulate MA(2) process with betas 0.6, 0.4
+n = int(1000)
+alphas = np.array([0.])
+betas = np.array([0.6, 0.4])
+ar = np.r_[1, -alphas]
+ma = np.r_[1, betas]
+
+ma3 = smt.arma_generate_sample(ar=ar, ma=ma, nsample=n)
+_ = tsplot(ma3, lags=12,title="MA(2) process")
 
 
 
+# Simulate an ARMA(2, 2) model with alphas=[0.5,-0.25] and betas=[0.5,-0.3]
+max_lag = 12
+
+n = int(5000) # lots of samples to help estimates
+burn = int(n/10) # number of samples to discard before fit
+
+alphas = np.array([0.8, -0.65])
+betas = np.array([0.5, -0.7])
+ar = np.r_[1, -alphas]
+ma = np.r_[1, betas]
+
+arma22 = smt.arma_generate_sample(ar=ar, ma=ma, nsample=n, burnin=burn)
+_ = tsplot(arma22, lags=max_lag,title="ARMA(2,2) process")
+
+# pick best order by aic
+# smallest aic value wins
+best_aic = np.inf
+best_order = None
+best_mdl = None
+
+rng = range(5)
+for i in rng:
+    for j in rng:
+        try:
+            tmp_mdl = smt.ARMA(arma22, order=(i, j)).fit(method='mle', trend='nc')
+            tmp_aic = tmp_mdl.aic
+            if tmp_aic < best_aic:
+                best_aic = tmp_aic
+                best_order = (i, j)
+                best_mdl = tmp_mdl
+        except: continue
 
 
-
-
+print('aic: {:6.5f} | order: {}'.format(best_aic, best_order))
 
 
 # ARIMA baseline model
