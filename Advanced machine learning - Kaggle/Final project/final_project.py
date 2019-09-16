@@ -248,6 +248,96 @@ for i in rng:
 print('aic: {:6.5f} | order: {}'.format(best_aic, best_order))
 
 
+###################
+# Facebook Prophet
+###################
+from fbprophet import Prophet
+from fbprophet.plot import plot_plotly
+import plotly.offline as py
+
+
+overall_ts.index=pd.date_range(start = '2013-01-01',end='2015-10-01', freq = 'MS')
+overall_ts=overall_ts.reset_index()
+overall_ts.head()
+
+overall_ts.columns=['ds','y']
+model = Prophet( yearly_seasonality=True) #instantiate Prophet with only yearly seasonality as our data is monthly
+model.fit(overall_ts)
+
+
+# predict for five months in the furure and MS - month start is the frequency
+future = model.make_future_dataframe(periods = 5, freq = 'MS')
+# now lets make the forecasts
+forecast = model.predict(future)
+forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail()
+
+model.plot(forecast)
+model.plot_components(forecast)
+
+py.init_notebook_mode()
+
+fig = plot_plotly(model, forecast)  # This returns a interactive plotly Figure
+py.plot(fig)
+
+
+
+# Middle out approach
+# Eg: Consider our problem of predicting store-item level forecasts.
+# Take the middle level(Stores) and find forecasts for the stores
+# Use bottoms up approach to find overall sales
+# Dis-integrate store sales using proportions to find the item-level sales using a top-down approach
+
+# get the unique combinations of item-store from the sales data at monthly level
+monthly_shop_sales=transactions.groupby(["date_block_num","shop_id"])["item_cnt_day"].sum()
+# get the shops to the columns
+monthly_shop_sales=monthly_shop_sales.unstack(level=1)
+
+num_of_shops = len(monthly_shop_sales.columns)
+
+monthly_shop_sales=monthly_shop_sales.fillna(0)
+
+dates=pd.date_range(start = '2013-01-01',end='2015-10-01', freq = 'MS')
+monthly_shop_sales.index=dates
+monthly_shop_sales=monthly_shop_sales.reset_index()
+monthly_shop_sales.head()
+
+# Looping through each stores to forecast
+import time
+start_time=time.time()
+
+# Calculating the base forecasts using prophet
+# From HTSprophet pachage -- https://github.com/CollinRooney12/htsprophet/blob/master/htsprophet/hts.py
+forecastsDict = {}
+for node in range(num_of_shops):
+    # take the date-column and the col to be forecasted
+    nodeToForecast = pd.concat([monthly_shop_sales.iloc[:,0], monthly_shop_sales.iloc[:, node+1]], axis = 1)
+#     print(nodeToForecast.head())  # just to check
+# rename for prophet compatability
+    nodeToForecast = nodeToForecast.rename(columns = {nodeToForecast.columns[0] : 'ds'})
+    nodeToForecast = nodeToForecast.rename(columns = {nodeToForecast.columns[1] : 'y'})
+    growth = 'linear'
+    m = Prophet(growth, yearly_seasonality=True)
+    m.fit(nodeToForecast)
+    future = m.make_future_dataframe(periods = 1, freq = 'MS')
+    forecastsDict[node] = m.predict(future)
+
+
+node = 0
+nodeToForecast = pd.concat([monthly_shop_sales.iloc[:,0], monthly_shop_sales.iloc[:, node+1]], axis = 1)
+nodeToForecast
+#     print(nodeToForecast.head())  # just to check
+# rename for prophet compatability
+nodeToForecast = nodeToForecast.rename(columns = {nodeToForecast.columns[0] : 'ds'})
+nodeToForecast = nodeToForecast.rename(columns = {nodeToForecast.columns[1] : 'y'})
+growth = 'linear'
+m = Prophet(growth, yearly_seasonality=True)
+m.fit(nodeToForecast)
+future = m.make_future_dataframe(periods = 1, freq = 'MS')
+forecastsDict[node] = m.predict(future)
+
+
+
+
 # ARIMA baseline model
 p = d = q = range(1, 2)
 pdq = list(itertools.product(p, d, q))
