@@ -322,19 +322,6 @@ for node in range(num_of_shops):
     forecastsDict[node] = m.predict(future)
 
 
-node = 0
-nodeToForecast = pd.concat([monthly_shop_sales.iloc[:,0], monthly_shop_sales.iloc[:, node+1]], axis = 1)
-nodeToForecast
-#     print(nodeToForecast.head())  # just to check
-# rename for prophet compatability
-nodeToForecast = nodeToForecast.rename(columns = {nodeToForecast.columns[0] : 'ds'})
-nodeToForecast = nodeToForecast.rename(columns = {nodeToForecast.columns[1] : 'y'})
-growth = 'linear'
-m = Prophet(growth, yearly_seasonality=True)
-m.fit(nodeToForecast)
-future = m.make_future_dataframe(periods = 1, freq = 'MS')
-forecastsDict[node] = m.predict(future)
-
 
 
 
