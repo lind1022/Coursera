@@ -22,8 +22,8 @@ from statsmodels.tsa.stattools import adfuller, acf, pacf,arma_order_select_ic
 Some Tips
 
 A good exercise is to reproduce previous_value_benchmark. As the name suggest -
- in this benchmark for the each shop/item pair our predictions are just monthly
- sales from the previous month, i.e. October 2015.
+in this benchmark for the each shop/item pair our predictions are just monthly
+sales from the previous month, i.e. October 2015.
 
 The most important step at reproducing this score is correctly aggregating daily
 data and constructing monthly sales data frame.
@@ -53,6 +53,9 @@ items           = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
 item_categories = pd.read_csv(os.path.join(DATA_FOLDER, 'item_categories.csv'))
 shops           = pd.read_csv(os.path.join(DATA_FOLDER, 'shops.csv'))
 
+test           = pd.read_csv(os.path.join(DATA_FOLDER, 'test.csv.gz'))
+
+
 # Creating year, month, day variable from date
 trans['date'] = pd.to_datetime(trans['date'], format='%d.%m.%Y')
 
@@ -75,8 +78,17 @@ trans = trans.sort_values('date')
 trans.isnull().sum()
 trans.nunique()
 
+# Control for data leakage, only use item and store that appear in the test dataset.
+test_shop_ids = test['shop_id'].unique()
+test_item_ids = test['item_id'].unique()
 
-ts = trans.groupby(['date_block_num', 'shop_id', 'item_id'])['item_cnt_day'].sum().reset_index()
+trans = trans[trans['shop_id'].isin(test_shop_ids)]
+trans = trans[trans['item_id'].isin(test_item_ids)]
+
+# Aggregate to monly data
+ts = trans.groupby(['year', 'month', 'shop_id', 'item_id', 'item_category_id'])[['item_cnt_day', 'sales']].sum().reset_index()
+
+
 
 
 
