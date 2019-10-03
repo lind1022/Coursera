@@ -44,9 +44,9 @@ Apart from item/shop pair lags you can try adding lagged values of total shop or
 """
 
 
-# DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
+DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
 
-DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
+# DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
 
 trans           = pd.read_csv(os.path.join(DATA_FOLDER, 'sales_train.csv.gz'))
 items           = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
@@ -54,7 +54,9 @@ item_categories = pd.read_csv(os.path.join(DATA_FOLDER, 'item_categories.csv'))
 shops           = pd.read_csv(os.path.join(DATA_FOLDER, 'shops.csv'))
 
 test           = pd.read_csv(os.path.join(DATA_FOLDER, 'test.csv.gz'))
+sample         = pd.read_csv(os.path.join(DATA_FOLDER, 'sample_submission.csv.gz'))
 
+os.chdir(DATA_FOLDER)
 
 # Creating year, month, day variable from date
 trans['date'] = pd.to_datetime(trans['date'], format='%d.%m.%Y')
@@ -88,6 +90,17 @@ trans = trans[trans['item_id'].isin(test_item_ids)]
 # Aggregate to monly data
 ts = trans.groupby(['year', 'month', 'shop_id', 'item_id', 'item_category_id'])[['item_cnt_day', 'sales']].sum().reset_index()
 
+# oct_15 data
+
+oct_15 = ts[(ts.year == 2015) & (ts.month == 10)][['shop_id', 'item_id', 'item_cnt_day']]
+
+pred_test = pd.merge(test, oct_15, on=['shop_id', 'item_id'], how='left')
+pred_test['item_cnt_day'] = pred_test['item_cnt_day'].fillna(0)
+
+# Clip sales values into the [0, 20] range
+
+pred_test['item_cnt_day'][pred_test['item_cnt_day'] < 0] = 0
+pred_test['item_cnt_day'][pred_test['item_cnt_day'] > 20] = 20
 
 
 
@@ -95,7 +108,8 @@ ts = trans.groupby(['year', 'month', 'shop_id', 'item_id', 'item_category_id'])[
 
 
 
-
+submit = pred_test[['ID', 'item_cnt_day']]
+submit.to_csv("submission.csv", index = False)
 
 
 # end of script
