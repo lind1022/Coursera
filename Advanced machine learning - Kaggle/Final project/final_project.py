@@ -87,10 +87,29 @@ test_item_ids = test['item_id'].unique()
 trans = trans[trans['shop_id'].isin(test_shop_ids)]
 trans = trans[trans['item_id'].isin(test_item_ids)]
 
-# Aggregate to monly data
+# Aggregate to montly data
 ts = trans.groupby(['year', 'month', 'shop_id', 'item_id', 'item_category_id'])[['item_cnt_day', 'sales']].sum().reset_index()
 
-# oct_15 data
+
+# To mimic the real behavior of the data we have to create the missing records
+# from the loaded dataset, so for each month we need to create the missing records
+# for each shop and item, since we don't have data for them I'll replace them with 0.
+shop_ids = trans['shop_id'].unique()
+item_ids = trans['item_id'].unique()
+days = len(trans['date_block_num'].unique())
+empty_df = []
+for i in range(days):
+    for shop in shop_ids:
+        for item in item_ids:
+            empty_df.append([i, shop, item])
+    
+empty_df = pd.DataFrame(empty_df, columns=['date_block_num','shop_id','item_id'])
+
+
+
+###########################################################
+# Creating the prediction baseline with Oct 15 sales
+###########################################################
 
 oct_15 = ts[(ts.year == 2015) & (ts.month == 10)][['shop_id', 'item_id', 'item_cnt_day']]
 
@@ -98,17 +117,11 @@ pred_test = pd.merge(test, oct_15, on=['shop_id', 'item_id'], how='left')
 pred_test['item_cnt_day'] = pred_test['item_cnt_day'].fillna(0)
 
 # Clip sales values into the [0, 20] range
-
 pred_test['item_cnt_day'][pred_test['item_cnt_day'] < 0] = 0
 pred_test['item_cnt_day'][pred_test['item_cnt_day'] > 20] = 20
 
-
-
-
-
-
-
-submit = pred_test[['ID', 'item_cnt_day']]
+# File to submit
+submit = pred_test[['ID', 'item_cnt_day']].rename(columns = {'item_cnt_day': 'item_cnt_month'})
 submit.to_csv("submission.csv", index = False)
 
 
