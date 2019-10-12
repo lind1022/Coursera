@@ -44,9 +44,9 @@ Apart from item/shop pair lags you can try adding lagged values of total shop or
 """
 
 
-DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
+# DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
 
-# DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
+DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
 
 trans           = pd.read_csv(os.path.join(DATA_FOLDER, 'sales_train.csv.gz'))
 items           = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
@@ -102,7 +102,7 @@ for i in range(days):
     for shop in shop_ids:
         for item in item_ids:
             empty_df.append([i, shop, item])
-    
+
 empty_df = pd.DataFrame(empty_df, columns=['date_block_num','shop_id','item_id'])
 
 
