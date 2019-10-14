@@ -2,10 +2,12 @@ import pandas as pd
 import numpy as np
 from itertools import product
 import os
+from sklearn.model_selection import KFold
 
-# DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
 
-DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
+DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
+
+# DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
 sales           = pd.read_csv(os.path.join(DATA_FOLDER, 'sales_train.csv.gz'))
 
 index_cols = ['shop_id', 'item_id', 'date_block_num']
@@ -26,6 +28,116 @@ gb = sales.groupby(index_cols,as_index=False).agg({'item_cnt_day':{'target':'sum
 #fix column names
 gb.columns = [col[0] if col[-1]=='' else col[-1] for col in gb.columns.values]
 #join aggregated data to the grid
-all_data = pd.merge(grid,gb,how='left',on=index_cols).fillna(0)
+all_data = pd.merge(grid, gb, how='left', on=index_cols).fillna(0)
 #sort the data
-all_data.sort_values(['date_block_num','shop_id','item_id'],inplace=True)
+all_data.sort_values(['date_block_num','shop_id','item_id'], inplace=True)
+
+#############################################
+# Mean encoding without regularisation
+#############################################
+
+# Method 1
+# Calculate a mapping: {item_id: target_mean}
+item_id_target_mean = all_data.groupby('item_id').target.mean()
+
+# In our non-regularized case we just *map* the computed means to the `item_id`'s
+all_data['item_target_enc'] = all_data['item_id'].map(item_id_target_mean)
+
+# Fill NaNs
+all_data['item_target_enc'].fillna(0.3343, inplace=True)
+
+# Print correlation
+encoded_feature = all_data['item_target_enc'].values
+print(np.corrcoef(all_data['target'].values, encoded_feature)[0][1])
+
+
+# Method 2
+'''
+     Differently to `.target.mean()` function `transform`
+   will return a dataframe with an index like in `all_data`.
+   Basically this single line of code is equivalent to the first two lines from of Method 1.
+'''
+all_data['item_target_enc'] = all_data.groupby('item_id')['target'].transform('mean')
+
+# Fill NaNs
+all_data['item_target_enc'].fillna(0.3343, inplace=True)
+
+# Print correlation
+encoded_feature = all_data['item_target_enc'].values
+print(np.corrcoef(all_data['target'].values, encoded_feature)[0][1])
+
+
+######################
+# 1. K-folds scheme
+######################
+
+'''
+First, implement KFold scheme with five folds. Use KFold(5) from sklearn.model_selection.
+
+Split your data in 5 folds with sklearn.model_selection.KFold with shuffle=False argument.
+Iterate through folds: use all but the current fold to calculate mean target for each level item_id, and fill the current fold.
+
+See the Method 1 from the example implementation. In particular learn what map and pd.Series.map functions do. They are pretty handy in many situations.
+'''
+
+
+# YOUR CODE GOES HERE
+kf = KFold(n_splits=5, shuffle=False)
+# item_id_target_mean = pd.Series('NaN', index = sales['item_id'].sort_values().unique())
+for train_index, test_index in kf.split(all_data):
+    item_id_target_mean = all_data.loc[train_index].groupby('item_id').target.mean()
+    all_data.loc[test_index, 'item_target_enc'] = all_data['item_id'].loc[test_index].map(item_id_target_mean)
+
+all_data['item_target_enc'].fillna(0.3343, inplace=True)
+encoded_feature = all_data['item_target_enc'].values
+
+# You will need to compute correlation like that
+corr = np.corrcoef(all_data['target'].values, encoded_feature)[0][1]
+print(corr)
+
+
+############################
+# 2. Leave-one-out scheme
+############################
+'''
+To implement a faster version, note, that to calculate mean target value using all the objects but one given object, you can:
+    1. Calculate sum of the target values using all the objects.
+    2. Then subtract the target of the given object and divide the resulting value by n_objects - 1.
+
+Note that you do not need to perform 1. for every object. And 2. can be implemented without any for loop.
+It is the most convenient to use .transform function as in Method 2.
+'''
+
+all_data['item_target_enc'] = all_data.groupby('item_id')['target'].transform('sum')
+
+# YOUR CODE GOES HERE
+corr = np.corrcoef(all_data['target'].values, encoded_feature)[0][1]
+print(corr)
+grader.submit_tag('Leave-one-out_scheme', corr)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# end of script
