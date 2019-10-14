@@ -5,9 +5,9 @@ import os
 from sklearn.model_selection import KFold
 
 
-DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
+# DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
 
-# DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
+DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
 sales           = pd.read_csv(os.path.join(DATA_FOLDER, 'sales_train.csv.gz'))
 
 index_cols = ['shop_id', 'item_id', 'date_block_num']
@@ -107,19 +107,48 @@ To implement a faster version, note, that to calculate mean target value using a
 Note that you do not need to perform 1. for every object. And 2. can be implemented without any for loop.
 It is the most convenient to use .transform function as in Method 2.
 '''
-
-all_data['item_target_enc'] = all_data.groupby('item_id')['target'].transform('sum')
-
 # YOUR CODE GOES HERE
+all_data['item_id_sum'] = all_data.groupby('item_id')['target'].transform('sum')
+all_data['n_objects'] = all_data.groupby('item_id')['target'].transform('count')
+all_data['item_target_enc'] = (all_data.item_id_sum - all_data.target) / (all_data.n_objects - 1)
+
+all_data['item_target_enc'].fillna(0.3343, inplace=True)
+encoded_feature = all_data['item_target_enc'].values
+
 corr = np.corrcoef(all_data['target'].values, encoded_feature)[0][1]
 print(corr)
-grader.submit_tag('Leave-one-out_scheme', corr)
 
 
+#################
+# 3. Smoothing
+#################
 
+'''
+Next, implement smoothing scheme with alpha=100. Use the formula from the first slide in the video and 0.33430.3343 as globalmean.
+Note that nrows is the number of objects that belong to a certain category (not the number of rows in the dataset).
+'''
+# YOUR CODE GOES HERE
+global_mean = all_data['target'].mean()
+alpha = 100
 
+all_data['mean_target'] = all_data.groupby('item_id')['target'].transform('mean')
+all_data['nrows'] = all_data.groupby('item_id')['target'].transform('count')
 
+all_data['item_target_enc'] = (all_data.mean_target * all_data.nrows + global_mean * alpha) / (all_data.nrows + alpha)
 
+encoded_feature = all_data['item_target_enc'].values
+corr = np.corrcoef(all_data['target'].values, encoded_feature)[0][1]
+print(corr)
+
+##############################
+# 4. Expanding mean scheme
+##############################
+
+'''
+Finally, implement the expanding mean scheme. It is basically already implemented
+for you in the video, but you can challenge yourself and try to implement it yourself.
+You will need cumsum and cumcount functions from pandas.
+'''
 
 
 
