@@ -5,9 +5,9 @@ import os
 from sklearn.model_selection import KFold
 
 
-# DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
+DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
+# DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
 
-DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
 sales           = pd.read_csv(os.path.join(DATA_FOLDER, 'sales_train.csv.gz'))
 
 index_cols = ['shop_id', 'item_id', 'date_block_num']
@@ -135,6 +135,7 @@ all_data['mean_target'] = all_data.groupby('item_id')['target'].transform('mean'
 all_data['nrows'] = all_data.groupby('item_id')['target'].transform('count')
 
 all_data['item_target_enc'] = (all_data.mean_target * all_data.nrows + global_mean * alpha) / (all_data.nrows + alpha)
+all_data['item_target_enc'].fillna(0.3343, inplace=True)
 
 encoded_feature = all_data['item_target_enc'].values
 corr = np.corrcoef(all_data['target'].values, encoded_feature)[0][1]
@@ -150,23 +151,14 @@ for you in the video, but you can challenge yourself and try to implement it you
 You will need cumsum and cumcount functions from pandas.
 '''
 
+all_data['cum_sum'] = all_data.groupby('item_id')['target'].cumsum() - all_data['target']
+all_data['cum_count'] = all_data.groupby('item_id').cumcount()
+all_data['item_target_enc'] = all_data.cum_sum / all_data.cum_count
+all_data['item_target_enc'].fillna(0.3343, inplace=True)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+encoded_feature = all_data['item_target_enc'].values
+corr = np.corrcoef(all_data['target'].values, encoded_feature)[0][1]
+print(corr)
 
 
 # end of script
