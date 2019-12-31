@@ -12,20 +12,6 @@ from multiprocessing import Pool
 
 import numpy as np
 
-class A(object):
-    def __init__(self):
-        self.x = 'Hello'
-
-    def method_a(self, foo):
-        print self.x + ' ' + foo
-
-import math
-def logit2prob(logit):
-  odds = math.exp(logit)
-  prob = odds / (1 + odds)
-  return(prob)
-logit2prob(2.5)
-
 
 class NearestNeighborsFeats(BaseEstimator, ClassifierMixin):
     '''
@@ -91,10 +77,16 @@ class NearestNeighborsFeats(BaseEstimator, ClassifierMixin):
             '''
 
             # YOUR CODE GOES HERE
-            # test_feats =  # YOUR CODE GOES HERE
+            cores = self.n_jobs
+            p = Pool(cores)
+            data = (X[i:i+1] for i in range(X.shape[0]))
+
+            test_feats =  p.map(self.get_features_for_one, data)
+
+
             # YOUR CODE GOES HERE
 
-            assert False, 'You need to implement it for n_jobs > 1'
+#             assert False, 'You need to implement it for n_jobs > 1'
 
 
 
@@ -139,7 +131,8 @@ class NearestNeighborsFeats(BaseEstimator, ClassifierMixin):
         '''
         for k in self.k_list:
             # YOUR CODE GOES HERE
-
+            feats = np.bincount(self.y_train[neighs[0:k]], minlength = self.n_classes)
+            feats = feats / sum(feats)
             assert len(feats) == self.n_classes
             return_list += [feats]
 
@@ -150,8 +143,8 @@ class NearestNeighborsFeats(BaseEstimator, ClassifierMixin):
 
                What can help you: `np.where`
         '''
-
-        feats = # YOUR CODE GOES HERE
+        diff = np.where(neighs_y != neighs_y[0])[0]
+        feats = [diff[0]] if len(diff) else [len(neighs_y)] # YOUR CODE GOES HERE
 
         assert len(feats) == 1
         return_list += [feats]
@@ -166,8 +159,16 @@ class NearestNeighborsFeats(BaseEstimator, ClassifierMixin):
                `np.where` might be helpful
         '''
         feats = []
+        arr, index = np.unique(neighs_y, return_index = True)
+        pair = dict(zip(arr, index))
         for c in range(self.n_classes):
             # YOUR CODE GOES HERE
+            if np.isin(c, arr):
+                distance = neighs_dist[pair[c]]
+            else:
+                distance = 999
+            feats += [distance]
+
 
         assert len(feats) == self.n_classes
         return_list += [feats]
@@ -185,6 +186,8 @@ class NearestNeighborsFeats(BaseEstimator, ClassifierMixin):
         feats = []
         for c in range(self.n_classes):
             # YOUR CODE GOES HERE
+            same = np.where(neighs_y == c)[0]
+            feats.append(neighs_dist[same[0]] / (self.eps + neighs_dist[0]) if len(same) else 999)
 
         assert len(feats) == self.n_classes
         return_list += [feats]
@@ -203,14 +206,14 @@ class NearestNeighborsFeats(BaseEstimator, ClassifierMixin):
         '''
         for k in self.k_list:
 
-            feat_51 = # YOUR CODE GOES HERE
-            feat_52 = # YOUR CODE GOES HERE
+            feat_51 = neighs_dist[k-1]                               # YOUR CODE GOES HERE
+            feat_52 = neighs_dist[k-1] / (neighs_dist[0] + self.eps) # YOUR CODE GOES HERE
 
             return_list += [[feat_51, feat_52]]
 
         '''
             6. Mean distance to neighbors of each class for each K from `k_list`
-                   For each class select the neighbors of that class among K nearest neighbors
+                   For each class select the neighbors of that class among K nearest neighbors 
                    and compute the average distance to those objects
 
                    If there are no objects of a certain class among K neighbors, set mean distance to 999
@@ -222,7 +225,9 @@ class NearestNeighborsFeats(BaseEstimator, ClassifierMixin):
         for k in self.k_list:
 
             # YOUR CODE GOES IN HERE
-
+            numerator = np.bincount(neighs_y[:k], weights=neighs_dist[:k], minlength=self.n_classes)
+            denominator = self.eps + np.bincount(neighs_y[:k], minlength=self.n_classes)
+            feats = np.where(numerator > 0, numerator / denominator, 999)
             assert len(feats) == self.n_classes
             return_list += [feats]
 
