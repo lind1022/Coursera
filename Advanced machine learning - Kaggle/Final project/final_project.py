@@ -41,6 +41,16 @@ You can get a rather good score after creating some lag-based features like in
 Apart from item/shop pair lags you can try adding lagged values of total shop or
  total item sales (which are essentially mean-encodings). All of that is going
  to add some new information.
+
+If you successfully made use of previous advises, it's time to move forward and
+incorporate some new knowledge from week 4. Here are several things you can do:
+
+Try to carefully tune hyper parameters of your models, maybe there is a better
+set of parameters for your model out there. But don't spend too much time on it.
+Try ensembling. Start with simple averaging of linear model and gradient boosted
+trees like in programming assignment notebook. And then try to use stacking.
+Explore new features! There is a lot of useful information in the data: text
+descriptions, item categories, seasonal trends.
 """
 
 
