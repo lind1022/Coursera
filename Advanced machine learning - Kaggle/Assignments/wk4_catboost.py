@@ -99,6 +99,17 @@ You can see in stdout values of the loss function on each iteration, or on each
  training and how much time is left.
 '''
 
+from catboost import CatBoostClassifier
+model = CatBoostClassifier(
+    iterations=15,
+    verbose=3
+)
+model.fit(
+    X_train, y_train,
+    cat_features=cat_features,
+    eval_set=(X_validation, y_validation),
+)
+
 #################
 # Random Seed
 #################
@@ -120,6 +131,7 @@ model.fit(
 )
 
 random_seed = model.random_seed_
+
 print('Used random seed = ' + str(random_seed))
 model = CatBoostClassifier(
     iterations=5,
@@ -132,7 +144,7 @@ model.fit(
 )
 
 '''
-Try training 10 models with parameters and calculate mean and the standart
+Try training 10 models with parameters and calculate mean and the standard
 deviation of Logloss error on validation dataset.
 '''
 
@@ -142,19 +154,146 @@ What is the mean value of the Logloss metric on validation dataset
 (X_validation, y_validation) after 10 times training `CatBoostClassifier` with
 different random seeds in the following way:
 '''
+scores = np.zeros(10)
+for i in range(10):
+    model = CatBoostClassifier(
+        iterations=300,
+        learning_rate=0.1,
+        random_seed=i
+    )
+    model.fit(
+        X_train, y_train,
+        cat_features=cat_features,
+        eval_set=(X_validation, y_validation),
+        logging_level='Silent',
+    )
+    scores[i] = model.best_score_['validation']['Logloss']
+    print('Iteration ' + str(i))
+
+mean = np.mean(scores)
+
+# Question 5
+stddev = np.std(scores)
+
+##########################################
+# Metrics calculation and graph plotting
+##########################################
+
+'''
+When experimenting with Jupyter notebook you can see graphs of different errors during training.
+To do that you need to use `plot=True` parameter.
+'''
+from catboost import CatBoostClassifier
 model = CatBoostClassifier(
-    iterations=300,
+    iterations=50,
+    random_seed=63,
     learning_rate=0.1,
-    random_seed={my_random_seed}
+    custom_loss=['Accuracy']
 )
 model.fit(
     X_train, y_train,
     cat_features=cat_features,
     eval_set=(X_validation, y_validation),
+    logging_level='Silent',
+    plot=True
 )
 
 
+# Question 6
+'''
+What is the value of the accuracy metric value on evaluation dataset after
+training with parameters iterations=50, random_seed=63, learning_rate=0.1?
+'''
+model = CatBoostClassifier(
+    iterations=50,
+    random_seed=63,
+    learning_rate=0.1,
+    custom_loss=['Accuracy']
+)
+model.fit(
+    X_train, y_train,
+    cat_features=cat_features,
+    eval_set=(X_validation, y_validation),
+    logging_level='Silent',
+    plot=True
+)
 
+
+####################
+# Model Comparison
+####################
+model1 = CatBoostClassifier(
+    learning_rate=0.5,
+    iterations=1000,
+    random_seed=64,
+    train_dir='learning_rate_0.5',
+    custom_loss = ['Accuracy']
+)
+
+model2 = CatBoostClassifier(
+    learning_rate=0.05,
+    iterations=1000,
+    random_seed=64,
+    train_dir='learning_rate_0.05',
+    custom_loss = ['Accuracy']
+)
+model1.fit(
+    X_train, y_train,
+    eval_set=(X_validation, y_validation),
+    cat_features=cat_features,
+    verbose=100
+)
+model2.fit(
+    X_train, y_train,
+    eval_set=(X_validation, y_validation),
+    cat_features=cat_features,
+    verbose=100
+)
+
+from catboost import MetricVisualizer
+MetricVisualizer(['learning_rate_0.05', 'learning_rate_0.5']).start()
+
+
+
+# Best iteration
+'''
+If a validation dataset is present then after training, the model is shrinked to
+a number of trees when it got best evaluation metric value on validation dataset.
+By default evaluation metric is the optimized metric. But you can set evaluation
+metric to some other metric. In the example below evaluation metric is Accuracy.
+'''
+from catboost import CatBoostClassifier
+model = CatBoostClassifier(
+    iterations=100,
+    random_seed=63,
+    learning_rate=0.5,
+    eval_metric='Accuracy'
+)
+model.fit(
+    X_train, y_train,
+    cat_features=cat_features,
+    eval_set=(X_validation, y_validation),
+    logging_level='Silent',
+    plot=True
+)
+
+print('Tree count: ' + str(model.tree_count_))
+
+# If you don't want the model to be shrinked, you can set use_best_model=False
+model = CatBoostClassifier(
+    iterations=100,
+    random_seed=63,
+    learning_rate=0.5,
+    eval_metric='Accuracy',
+    use_best_model=False
+)
+model.fit(
+    X_train, y_train,
+    cat_features=cat_features,
+    eval_set=(X_validation, y_validation),
+    logging_level='Silent',
+    plot=True
+)
 
 
 

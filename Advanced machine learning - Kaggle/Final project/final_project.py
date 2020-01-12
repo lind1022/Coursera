@@ -94,12 +94,21 @@ trans.nunique()
 test_shop_ids = test['shop_id'].unique()
 test_item_ids = test['item_id'].unique()
 
+# Keep data that has shop and item in the test dataset
 trans = trans[trans['shop_id'].isin(test_shop_ids)]
 trans = trans[trans['item_id'].isin(test_item_ids)]
 
-# Aggregate to montly data
-ts = trans.groupby(['year', 'month', 'shop_id', 'item_id', 'item_category_id'])[['item_cnt_day', 'sales']].sum().reset_index()
+# Aggregate to montly data by month, shop, item
+gb = trans.groupby(['date_block_num', 'shop_id', 'item_id']).agg(shop_item_month=('item_cnt_day', 'sum')).reset_index()
+trans = pd.merge(trans, gb, how='left', on=['date_block_num', 'shop_id', 'item_id']).fillna(0)
 
+# Aggregate to item-month
+gb = trans.groupby(['date_block_num', 'item_id']).agg(item_month=('item_cnt_day', 'sum')).reset_index()
+trans = pd.merge(trans, gb, how='left', on=['date_block_num', 'item_id']).fillna(0)
+
+# Aggregate to shop-month
+gb = trans.groupby(['date_block_num', 'shop_id']).agg(shop_month=('item_cnt_day', 'sum')).reset_index()
+trans = pd.merge(trans, gb, how='left', on=['date_block_num', 'shop_id']).fillna(0)
 
 # To mimic the real behavior of the data we have to create the missing records
 # from the loaded dataset, so for each month we need to create the missing records
@@ -114,6 +123,19 @@ for i in range(days):
             empty_df.append([i, shop, item])
 
 empty_df = pd.DataFrame(empty_df, columns=['date_block_num','shop_id','item_id'])
+
+# Adding lag based features
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -134,5 +156,6 @@ pred_test['item_cnt_day'][pred_test['item_cnt_day'] > 20] = 20
 submit = pred_test[['ID', 'item_cnt_day']].rename(columns = {'item_cnt_day': 'item_cnt_month'})
 submit.to_csv("submission.csv", index = False)
 
+kaggle competitions submit -c competitive-data-science-predict-future-sales -f submission.csv -m "Message"
 
 # end of script
