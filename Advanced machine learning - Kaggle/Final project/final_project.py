@@ -53,10 +53,28 @@ Explore new features! There is a lot of useful information in the data: text
 descriptions, item categories, seasonal trends.
 """
 
+# Create a function to downcast data to save storage
+def downcast_dtypes(df):
+    '''
+        Changes column types in the dataframe:
 
-# DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
+                `float64` type to `float32`
+                `int64`   type to `int32`
+    '''
 
-DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
+    # Select columns to downcast
+    float_cols = [c for c in df if df[c].dtype == "float64"]
+    int_cols =   [c for c in df if df[c].dtype == "int64"]
+
+    # Downcast
+    df[float_cols] = df[float_cols].astype(np.float32)
+    df[int_cols]   = df[int_cols].astype(np.int32)
+
+    return df
+
+DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
+
+# DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
 
 trans           = pd.read_csv(os.path.join(DATA_FOLDER, 'sales_train.csv.gz'))
 items           = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
@@ -69,26 +87,22 @@ sample         = pd.read_csv(os.path.join(DATA_FOLDER, 'sample_submission.csv.gz
 os.chdir(DATA_FOLDER)
 
 # Creating year, month, day variable from date
-trans['date'] = pd.to_datetime(trans['date'], format='%d.%m.%Y')
-
-trans['year'] = pd.DatetimeIndex(trans['date']).year
-trans['month'] = pd.DatetimeIndex(trans['date']).month
-trans['day'] = pd.DatetimeIndex(trans['date']).day
+# trans['date'] = pd.to_datetime(trans['date'], format='%d.%m.%Y')
+#
+# trans['year'] = pd.DatetimeIndex(trans['date']).year
+# trans['month'] = pd.DatetimeIndex(trans['date']).month
+# trans['day'] = pd.DatetimeIndex(trans['date']).day
 
 # Creating a sales column for each day
-trans['sales'] = trans['item_price'] * trans['item_cnt_day']
 trans = pd.merge(trans, items, on='item_id')
 # The time series range
-print('Timeseries start from ' + str(trans['date'].min()) + ', finish on ' + str(trans['date'].max()))
-# Drop item name column, consider it as un-useful for now
-trans = trans.drop(columns = 'item_name')
+# print('Timeseries start from ' + str(trans['date'].min()) + ', finish on ' + str(trans['date'].max()))
 
 # Sort by date
-trans = trans.sort_values('date')
+trans = trans.sort_values('date_block_num')
 
-# check missing value and unique values for each column
-trans.isnull().sum()
-trans.nunique()
+# Drop item name column, consider it as un-useful for now
+trans = trans.drop(columns = ['item_name', 'date'])
 
 # Control for data leakage, only use item and store that appear in the test dataset.
 test_shop_ids = test['shop_id'].unique()
@@ -99,6 +113,8 @@ trans = trans[trans['shop_id'].isin(test_shop_ids)]
 trans = trans[trans['item_id'].isin(test_item_ids)]
 
 # Aggregate to montly data by month, shop, item
+index_cols = ['date_block_num', 'shop_id', 'item_id']
+
 gb = trans.groupby(['date_block_num', 'shop_id', 'item_id']).agg(shop_item_month=('item_cnt_day', 'sum')).reset_index()
 trans = pd.merge(trans, gb, how='left', on=['date_block_num', 'shop_id', 'item_id']).fillna(0)
 
@@ -109,6 +125,54 @@ trans = pd.merge(trans, gb, how='left', on=['date_block_num', 'item_id']).fillna
 # Aggregate to shop-month
 gb = trans.groupby(['date_block_num', 'shop_id']).agg(shop_month=('item_cnt_day', 'sum')).reset_index()
 trans = pd.merge(trans, gb, how='left', on=['date_block_num', 'shop_id']).fillna(0)
+
+del gb
+
+# trans = downcast_dtypes(trans)
+
+#############################
+# Adding lag based features
+#############################
+
+# Creating a lag term
+cols_to_rename = ['shop_item_month', 'item_month', 'shop_month']
+
+shift_range = [1, 2, 3, 4, 5, 12]
+
+for month_shift in shift_range:
+    train_shift = trans[index_cols + cols_to_rename].copy()
+
+    train_shift['date_block_num'] = train_shift['date_block_num'] + month_shift
+
+    foo = lambda x: '{}_lag_{}'.format(x, month_shift) if x in cols_to_rename else x
+    train_shift = train_shift.rename(columns=foo)
+    print(month_shift)
+    trans = pd.merge(trans, train_shift, on=index_cols, how='left').fillna(0)
+
+del train_shift
+
+
+shift_range = 2
+train_shift = trans[index_cols + cols_to_rename].copy()
+
+train_shift['date_block_num'] = train_shift['date_block_num'] + month_shift
+
+foo = lambda x: '{}_lag_{}'.format(x, month_shift) if x in cols_to_rename else x
+train_shift = train_shift.rename(columns=foo)
+print(month_shift)
+trans = pd.merge(trans, train_shift, on=index_cols, how='left').fillna(0)
+
+
+# Don't use old data from year 2013
+trans = trans[trans['date_block_num'] >= 12]
+
+# List of all lagged features
+fit_cols = [col for col in trans.columns if col[-1] in [str(item) for item in shift_range]]
+# We will drop these at fitting stage
+to_drop_cols = list(set(list(trans.columns)) - (set(fit_cols)|set(index_cols))) + ['date_block_num']
+
+# Category for each item
+item_category_mapping = items[['item_id','item_category_id']].drop_duplicates()
 
 # To mimic the real behavior of the data we have to create the missing records
 # from the loaded dataset, so for each month we need to create the missing records
@@ -124,10 +188,13 @@ for i in range(days):
 
 empty_df = pd.DataFrame(empty_df, columns=['date_block_num','shop_id','item_id'])
 
-# Adding lag based features
+# Merge the train set with the complete set (missing records will be filled with 0).
+trans = pd.merge(empty_df, trans, on=index_cols, how='left').fillna(0)
 
 
-
+trans = pd.merge(trans, item_category_mapping, how='left', on='item_id')
+trans = downcast_dtypes(trans)
+gc.collect();
 
 
 
