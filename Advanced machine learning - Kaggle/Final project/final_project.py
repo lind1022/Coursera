@@ -8,6 +8,7 @@ import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import statsmodels.tsa.api as smt
 import scipy.stats as scs
+from itertools import product
 
 from pylab import rcParams
 import itertools
@@ -72,9 +73,9 @@ def downcast_dtypes(df):
 
     return df
 
-DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
+# DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
 
-# DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
+DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
 
 trans           = pd.read_csv(os.path.join(DATA_FOLDER, 'sales_train.csv.gz'))
 items           = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
@@ -112,20 +113,32 @@ test_item_ids = test['item_id'].unique()
 trans = trans[trans['shop_id'].isin(test_shop_ids)]
 trans = trans[trans['item_id'].isin(test_item_ids)]
 
-# Aggregate to montly data by month, shop, item
-index_cols = ['date_block_num', 'shop_id', 'item_id']
 
+index_cols = ['shop_id', 'item_id', 'date_block_num']
+
+# For every month we create a grid from all shops/items combinations from that month
+grid = []
+for block_num in trans['date_block_num'].unique():
+    cur_shops = trans.loc[trans['date_block_num'] == block_num, 'shop_id'].unique()
+    cur_items = trans.loc[trans['date_block_num'] == block_num, 'item_id'].unique()
+    grid.append(np.array(list(product(*[cur_shops, cur_items, [block_num]])),dtype='int32'))
+
+# Turn the grid into a dataframe
+grid = pd.DataFrame(np.vstack(grid), columns = index_cols,dtype=np.int32)
+
+# Aggregate to montly data by month, shop, item
 gb = trans.groupby(['date_block_num', 'shop_id', 'item_id']).agg(shop_item_month=('item_cnt_day', 'sum')).reset_index()
-trans = pd.merge(trans, gb, how='left', on=['date_block_num', 'shop_id', 'item_id']).fillna(0)
+train = pd.merge(grid, gb, how='left', on=['date_block_num', 'shop_id', 'item_id']).fillna(0)
 
 # Aggregate to item-month
 gb = trans.groupby(['date_block_num', 'item_id']).agg(item_month=('item_cnt_day', 'sum')).reset_index()
-trans = pd.merge(trans, gb, how='left', on=['date_block_num', 'item_id']).fillna(0)
+train = pd.merge(train, gb, how='left', on=['date_block_num', 'item_id']).fillna(0)
 
 # Aggregate to shop-month
 gb = trans.groupby(['date_block_num', 'shop_id']).agg(shop_month=('item_cnt_day', 'sum')).reset_index()
-trans = pd.merge(trans, gb, how='left', on=['date_block_num', 'shop_id']).fillna(0)
+train = pd.merge(train, gb, how='left', on=['date_block_num', 'shop_id']).fillna(0)
 
+train = downcast_dtypes(train)
 del gb
 
 # trans = downcast_dtypes(trans)
@@ -139,29 +152,17 @@ cols_to_rename = ['shop_item_month', 'item_month', 'shop_month']
 
 shift_range = [1, 2, 3, 4, 5, 12]
 
+
 for month_shift in shift_range:
-    train_shift = trans[index_cols + cols_to_rename].copy()
+    train_shift = train[index_cols + cols_to_rename].copy()
 
     train_shift['date_block_num'] = train_shift['date_block_num'] + month_shift
 
     foo = lambda x: '{}_lag_{}'.format(x, month_shift) if x in cols_to_rename else x
     train_shift = train_shift.rename(columns=foo)
-    print(month_shift)
-    trans = pd.merge(trans, train_shift, on=index_cols, how='left').fillna(0)
+    train = pd.merge(train, train_shift, on=index_cols, how='left').fillna(0)
 
 del train_shift
-
-
-shift_range = 2
-train_shift = trans[index_cols + cols_to_rename].copy()
-
-train_shift['date_block_num'] = train_shift['date_block_num'] + month_shift
-
-foo = lambda x: '{}_lag_{}'.format(x, month_shift) if x in cols_to_rename else x
-train_shift = train_shift.rename(columns=foo)
-print(month_shift)
-trans = pd.merge(trans, train_shift, on=index_cols, how='left').fillna(0)
-
 
 # Don't use old data from year 2013
 trans = trans[trans['date_block_num'] >= 12]

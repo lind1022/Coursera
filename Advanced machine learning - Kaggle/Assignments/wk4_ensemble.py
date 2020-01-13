@@ -89,7 +89,7 @@ for month_shift in shift_range:
 
     foo = lambda x: '{}_lag_{}'.format(x, month_shift) if x in cols_to_rename else x
     train_shift = train_shift.rename(columns=foo)
-
+    print(month_shift)
     all_data = pd.merge(all_data, train_shift, on=index_cols, how='left').fillna(0)
 
 del train_shift
