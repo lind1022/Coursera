@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-import seaborn; seaborn.set()
+import seaborn as sns; sns.set()
 import os
 import pandas as pd
 import numpy as np
@@ -73,9 +73,8 @@ def downcast_dtypes(df):
 
     return df
 
-# DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
-
-DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
+DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
+# DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
 
 trans           = pd.read_csv(os.path.join(DATA_FOLDER, 'sales_train.csv.gz'))
 items           = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
@@ -88,22 +87,42 @@ sample         = pd.read_csv(os.path.join(DATA_FOLDER, 'sample_submission.csv.gz
 os.chdir(DATA_FOLDER)
 
 # Creating year, month, day variable from date
-# trans['date'] = pd.to_datetime(trans['date'], format='%d.%m.%Y')
-#
-# trans['year'] = pd.DatetimeIndex(trans['date']).year
-# trans['month'] = pd.DatetimeIndex(trans['date']).month
-# trans['day'] = pd.DatetimeIndex(trans['date']).day
+trans['date'] = pd.to_datetime(trans['date'], format='%d.%m.%Y')
 
-# Creating a sales column for each day
-trans = pd.merge(trans, items, on='item_id')
+trans['year'] = pd.DatetimeIndex(trans['date']).year
+trans['month'] = pd.DatetimeIndex(trans['date']).month
+trans['day'] = pd.DatetimeIndex(trans['date']).day
+
 # The time series range
-# print('Timeseries start from ' + str(trans['date'].min()) + ', finish on ' + str(trans['date'].max()))
+print('Timeseries start from ' + str(trans['date'].min()) + ', finish on ' + str(trans['date'].max()))
+
+#######
+# EDA
+#######
+# Grouping data for EDA.
+# Category for each item
+item_category_mapping = items[['item_id','item_category_id']].drop_duplicates()
+
+trans = pd.merge(trans, item_category_mapping, how='left', on='item_id')
+
+gp_month_mean = trans.groupby(['month'], as_index=False)['item_cnt_day'].mean()
+gp_month_sum = trans.groupby(['month'], as_index=False)['item_cnt_day'].sum()
+gp_category_mean = trans.groupby(['item_category_id'], as_index=False)['item_cnt_day'].mean()
+gp_category_sum = trans.groupby(['item_category_id'], as_index=False)['item_cnt_day'].sum()
+gp_shop_mean = trans.groupby(['shop_id'], as_index=False)['item_cnt_day'].mean()
+gp_shop_sum = trans.groupby(['shop_id'], as_index=False)['item_cnt_day'].sum()
+
+
+f, axes = plt.subplots(2, 1, figsize=(22, 10), sharex=True)
+sns.barplot(x="item_category_id", y="item_cnt_day", data=gp_category_mean, ax=axes[0], palette="rocket").set_title("Monthly mean")
+sns.barplot(x="item_category_id", y="item_cnt_day", data=gp_category_sum, ax=axes[1], palette="rocket").set_title("Monthly sum")
+plt.show()
 
 # Sort by date
 trans = trans.sort_values('date_block_num')
 
 # Drop item name column, consider it as un-useful for now
-trans = trans.drop(columns = ['item_name', 'date'])
+trans = trans.drop(columns = ['date'])
 
 # Control for data leakage, only use item and store that appear in the test dataset.
 test_shop_ids = test['shop_id'].unique()
@@ -124,10 +143,10 @@ for block_num in trans['date_block_num'].unique():
     grid.append(np.array(list(product(*[cur_shops, cur_items, [block_num]])),dtype='int32'))
 
 # Turn the grid into a dataframe
-grid = pd.DataFrame(np.vstack(grid), columns = index_cols,dtype=np.int32)
+grid = pd.DataFrame(np.vstack(grid), columns = index_cols, dtype=np.int32)
 
 # Aggregate to montly data by month, shop, item
-gb = trans.groupby(['date_block_num', 'shop_id', 'item_id']).agg(shop_item_month=('item_cnt_day', 'sum')).reset_index()
+gb = trans.groupby(['date_block_num', 'shop_id', 'item_id']).agg(target=('item_cnt_day', 'sum')).reset_index()
 train = pd.merge(grid, gb, how='left', on=['date_block_num', 'shop_id', 'item_id']).fillna(0)
 
 # Aggregate to item-month
@@ -141,6 +160,7 @@ train = pd.merge(train, gb, how='left', on=['date_block_num', 'shop_id']).fillna
 train = downcast_dtypes(train)
 del gb
 
+
 # trans = downcast_dtypes(trans)
 
 #############################
@@ -148,10 +168,10 @@ del gb
 #############################
 
 # Creating a lag term
-cols_to_rename = ['shop_item_month', 'item_month', 'shop_month']
+
+cols_to_rename = list(train.columns.difference(index_cols))
 
 shift_range = [1, 2, 3, 4, 5, 12]
-
 
 for month_shift in shift_range:
     train_shift = train[index_cols + cols_to_rename].copy()
@@ -165,46 +185,43 @@ for month_shift in shift_range:
 del train_shift
 
 # Don't use old data from year 2013
-trans = trans[trans['date_block_num'] >= 12]
+train = train[train['date_block_num'] >= 12]
+
 
 # List of all lagged features
-fit_cols = [col for col in trans.columns if col[-1] in [str(item) for item in shift_range]]
+fit_cols = [col for col in train.columns if col[-1] in [str(item) for item in shift_range]]
+
 # We will drop these at fitting stage
-to_drop_cols = list(set(list(trans.columns)) - (set(fit_cols)|set(index_cols))) + ['date_block_num']
+to_drop_cols = list(set(list(train.columns)) - (set(fit_cols)|set(index_cols))) + ['date_block_num']
 
 # Category for each item
 item_category_mapping = items[['item_id','item_category_id']].drop_duplicates()
 
-# To mimic the real behavior of the data we have to create the missing records
-# from the loaded dataset, so for each month we need to create the missing records
-# for each shop and item, since we don't have data for them I'll replace them with 0.
-shop_ids = trans['shop_id'].unique()
-item_ids = trans['item_id'].unique()
-days = len(trans['date_block_num'].unique())
-empty_df = []
-for i in range(days):
-    for shop in shop_ids:
-        for item in item_ids:
-            empty_df.append([i, shop, item])
+train = pd.merge(train, item_category_mapping, how='left', on='item_id')
 
-empty_df = pd.DataFrame(empty_df, columns=['date_block_num','shop_id','item_id'])
-
-# Merge the train set with the complete set (missing records will be filled with 0).
-trans = pd.merge(empty_df, trans, on=index_cols, how='left').fillna(0)
-
-
-trans = pd.merge(trans, item_category_mapping, how='left', on='item_id')
-trans = downcast_dtypes(trans)
 gc.collect();
 
 
 
 
 
+#####################
+# Train/test split
+#####################
+# Save `date_block_num`, as we can't use them as features, but will need them to split the dataset into parts
+dates = train['date_block_num']
 
+last_block = dates.max()
+print('Test `date_block_num` is %d' % last_block)
 
+dates_train = dates[dates <  last_block]
+dates_test  = dates[dates == last_block]
 
+X_train = train.loc[dates <  last_block].drop(to_drop_cols, axis=1)
+X_test =  train.loc[dates == last_block].drop(to_drop_cols, axis=1)
 
+y_train = train.loc[dates <  last_block, 'target'].values
+y_test =  train.loc[dates == last_block, 'target'].values
 
 
 ###########################################################
@@ -224,6 +241,5 @@ pred_test['item_cnt_day'][pred_test['item_cnt_day'] > 20] = 20
 submit = pred_test[['ID', 'item_cnt_day']].rename(columns = {'item_cnt_day': 'item_cnt_month'})
 submit.to_csv("submission.csv", index = False)
 
-kaggle competitions submit -c competitive-data-science-predict-future-sales -f submission.csv -m "Message"
 
 # end of script
