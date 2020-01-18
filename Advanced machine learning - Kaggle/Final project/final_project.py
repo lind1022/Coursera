@@ -16,6 +16,10 @@ from statsmodels.tsa.arima_model import ARIMA
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from pandas.plotting import autocorrelation_plot
 from statsmodels.tsa.stattools import adfuller, acf, pacf,arma_order_select_ic
+
+from catboost import *
+import catboost
+from catboost import Pool
 %matplotlib qt
 
 
@@ -73,8 +77,8 @@ def downcast_dtypes(df):
 
     return df
 
-DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
-# DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
+# DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
+DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
 
 trans           = pd.read_csv(os.path.join(DATA_FOLDER, 'sales_train.csv.gz'))
 items           = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
@@ -105,10 +109,15 @@ item_category_mapping = items[['item_id','item_category_id']].drop_duplicates()
 
 trans = pd.merge(trans, item_category_mapping, how='left', on='item_id')
 
+# Sales by month
 gp_month_mean = trans.groupby(['month'], as_index=False)['item_cnt_day'].mean()
 gp_month_sum = trans.groupby(['month'], as_index=False)['item_cnt_day'].sum()
+
+# Sales by item category
 gp_category_mean = trans.groupby(['item_category_id'], as_index=False)['item_cnt_day'].mean()
 gp_category_sum = trans.groupby(['item_category_id'], as_index=False)['item_cnt_day'].sum()
+
+# Sales by shop
 gp_shop_mean = trans.groupby(['shop_id'], as_index=False)['item_cnt_day'].mean()
 gp_shop_sum = trans.groupby(['shop_id'], as_index=False)['item_cnt_day'].sum()
 
@@ -117,6 +126,21 @@ f, axes = plt.subplots(2, 1, figsize=(22, 10), sharex=True)
 sns.barplot(x="item_category_id", y="item_cnt_day", data=gp_category_mean, ax=axes[0], palette="rocket").set_title("Monthly mean")
 sns.barplot(x="item_category_id", y="item_cnt_day", data=gp_category_sum, ax=axes[1], palette="rocket").set_title("Monthly sum")
 plt.show()
+
+f, axes = plt.subplots(2, 1, figsize=(22, 10), sharex=True)
+sns.lineplot(x="month", y="item_cnt_day", data=gp_month_mean, ax=axes[0], palette="rocket").set_title("Monthly mean")
+sns.lineplot(x="month", y="item_cnt_day", data=gp_month_sum, ax=axes[1], palette="rocket").set_title("Monthly sum")
+plt.show()
+
+f, axes = plt.subplots(2, 1, figsize=(22, 10), sharex=True)
+sns.barplot(x="shop_id", y="item_cnt_day", data=gp_shop_mean, ax=axes[0], palette="rocket").set_title("Monthly mean")
+sns.barplot(x="shop_id", y="item_cnt_day", data=gp_shop_sum, ax=axes[1], palette="rocket").set_title("Monthly sum")
+plt.show()
+
+
+########################
+# Feature Engineering
+########################
 
 # Sort by date
 trans = trans.sort_values('date_block_num')
@@ -222,6 +246,31 @@ X_test =  train.loc[dates == last_block].drop(to_drop_cols, axis=1)
 
 y_train = train.loc[dates <  last_block, 'target'].values
 y_test =  train.loc[dates == last_block, 'target'].values
+
+
+####################################
+# A baseline model using catboost
+####################################
+pool = Pool(data=X_train, label=y_train)
+print(pool.get_feature_names())
+
+from catboost import CatBoostClassifier
+model = CatBoostClassifier(
+    iterations=5,
+    random_seed=0,
+    learning_rate=0.1
+)
+model.fit(
+    X_train, y_train,
+    cat_features=cat_features,
+    eval_set=(X_validation, y_validation),
+    logging_level='Silent'
+)
+print('Model is fitted: ' + str(model.is_fitted()))
+print('Model params:')
+print(model.get_params())
+
+
 
 
 ###########################################################
