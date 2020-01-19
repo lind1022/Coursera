@@ -9,6 +9,7 @@ import statsmodels.formula.api as smf
 import statsmodels.tsa.api as smt
 import scipy.stats as scs
 from itertools import product
+import gc
 
 from pylab import rcParams
 import itertools
@@ -20,6 +21,7 @@ from statsmodels.tsa.stattools import adfuller, acf, pacf,arma_order_select_ic
 from catboost import *
 import catboost
 from catboost import Pool
+from catboost import CatBoostClassifier
 %matplotlib qt
 
 
@@ -100,50 +102,16 @@ trans['day'] = pd.DatetimeIndex(trans['date']).day
 # The time series range
 print('Timeseries start from ' + str(trans['date'].min()) + ', finish on ' + str(trans['date'].max()))
 
-#######
-# EDA
-#######
-# Grouping data for EDA.
-# Category for each item
-item_category_mapping = items[['item_id','item_category_id']].drop_duplicates()
-
-trans = pd.merge(trans, item_category_mapping, how='left', on='item_id')
-
-# Sales by month
-gp_month_mean = trans.groupby(['month'], as_index=False)['item_cnt_day'].mean()
-gp_month_sum = trans.groupby(['month'], as_index=False)['item_cnt_day'].sum()
-
-# Sales by item category
-gp_category_mean = trans.groupby(['item_category_id'], as_index=False)['item_cnt_day'].mean()
-gp_category_sum = trans.groupby(['item_category_id'], as_index=False)['item_cnt_day'].sum()
-
-# Sales by shop
-gp_shop_mean = trans.groupby(['shop_id'], as_index=False)['item_cnt_day'].mean()
-gp_shop_sum = trans.groupby(['shop_id'], as_index=False)['item_cnt_day'].sum()
-
-
-f, axes = plt.subplots(2, 1, figsize=(22, 10), sharex=True)
-sns.barplot(x="item_category_id", y="item_cnt_day", data=gp_category_mean, ax=axes[0], palette="rocket").set_title("Monthly mean")
-sns.barplot(x="item_category_id", y="item_cnt_day", data=gp_category_sum, ax=axes[1], palette="rocket").set_title("Monthly sum")
-plt.show()
-
-f, axes = plt.subplots(2, 1, figsize=(22, 10), sharex=True)
-sns.lineplot(x="month", y="item_cnt_day", data=gp_month_mean, ax=axes[0], palette="rocket").set_title("Monthly mean")
-sns.lineplot(x="month", y="item_cnt_day", data=gp_month_sum, ax=axes[1], palette="rocket").set_title("Monthly sum")
-plt.show()
-
-f, axes = plt.subplots(2, 1, figsize=(22, 10), sharex=True)
-sns.barplot(x="shop_id", y="item_cnt_day", data=gp_shop_mean, ax=axes[0], palette="rocket").set_title("Monthly mean")
-sns.barplot(x="shop_id", y="item_cnt_day", data=gp_shop_sum, ax=axes[1], palette="rocket").set_title("Monthly sum")
-plt.show()
-
-
 ########################
 # Feature Engineering
 ########################
 
 # Sort by date
 trans = trans.sort_values('date_block_num')
+
+# Clip sales values into the [0, 20] range
+trans['item_cnt_day'][trans['item_cnt_day'] < 0] = 0
+trans['item_cnt_day'][trans['item_cnt_day'] > 20] = 20
 
 # Drop item name column, consider it as un-useful for now
 trans = trans.drop(columns = ['date'])
@@ -182,7 +150,6 @@ gb = trans.groupby(['date_block_num', 'shop_id']).agg(shop_month=('item_cnt_day'
 train = pd.merge(train, gb, how='left', on=['date_block_num', 'shop_id']).fillna(0)
 
 train = downcast_dtypes(train)
-del gb
 
 
 # trans = downcast_dtypes(trans)
@@ -220,12 +187,50 @@ to_drop_cols = list(set(list(train.columns)) - (set(fit_cols)|set(index_cols))) 
 
 # Category for each item
 item_category_mapping = items[['item_id','item_category_id']].drop_duplicates()
+item_price_mapping = trans[['item_id', 'item_price']].drop_duplicates()
+
 
 train = pd.merge(train, item_category_mapping, how='left', on='item_id')
+train = pd.merge(train, item_price_mapping, how='left', on='item_id')
 
 gc.collect();
 
+#######
+# EDA
+#######
+# Grouping data for EDA.
+# Category for each item
+item_category_mapping = items[['item_id','item_category_id']].drop_duplicates()
 
+trans = pd.merge(trans, item_category_mapping, how='left', on='item_id')
+
+# Sales by month
+gp_month_mean = trans.groupby(['month'], as_index=False)['item_cnt_day'].mean()
+gp_month_sum = trans.groupby(['month'], as_index=False)['item_cnt_day'].sum()
+
+# Sales by item category
+gp_category_mean = trans.groupby(['item_category_id'], as_index=False)['item_cnt_day'].mean()
+gp_category_sum = trans.groupby(['item_category_id'], as_index=False)['item_cnt_day'].sum()
+
+# Sales by shop
+gp_shop_mean = trans.groupby(['shop_id'], as_index=False)['item_cnt_day'].mean()
+gp_shop_sum = trans.groupby(['shop_id'], as_index=False)['item_cnt_day'].sum()
+
+
+f, axes = plt.subplots(2, 1, figsize=(22, 10), sharex=True)
+sns.barplot(x="item_category_id", y="item_cnt_day", data=gp_category_mean, ax=axes[0], palette="rocket").set_title("Monthly mean")
+sns.barplot(x="item_category_id", y="item_cnt_day", data=gp_category_sum, ax=axes[1], palette="rocket").set_title("Monthly sum")
+plt.show()
+
+f, axes = plt.subplots(2, 1, figsize=(22, 10), sharex=True)
+sns.lineplot(x="month", y="item_cnt_day", data=gp_month_mean, ax=axes[0], palette="rocket").set_title("Monthly mean")
+sns.lineplot(x="month", y="item_cnt_day", data=gp_month_sum, ax=axes[1], palette="rocket").set_title("Monthly sum")
+plt.show()
+
+f, axes = plt.subplots(2, 1, figsize=(22, 10), sharex=True)
+sns.barplot(x="shop_id", y="item_cnt_day", data=gp_shop_mean, ax=axes[0], palette="rocket").set_title("Monthly mean")
+sns.barplot(x="shop_id", y="item_cnt_day", data=gp_shop_sum, ax=axes[1], palette="rocket").set_title("Monthly sum")
+plt.show()
 
 
 
@@ -254,18 +259,31 @@ y_test =  train.loc[dates == last_block, 'target'].values
 pool = Pool(data=X_train, label=y_train)
 print(pool.get_feature_names())
 
-from catboost import CatBoostClassifier
-model = CatBoostClassifier(
-    iterations=5,
-    random_seed=0,
-    learning_rate=0.1
-)
-model.fit(
-    X_train, y_train,
-    cat_features=cat_features,
-    eval_set=(X_validation, y_validation),
-    logging_level='Silent'
-)
+cat_features = ['shop_id', 'item_id', 'item_category_id']
+# Training 10 models with different random seed and average the score
+scores = np.zeros(10)
+for i in range(10):
+    model = CatBoostRegressor(
+        iterations=5,
+        random_seed=i,
+        learning_rate=0.1
+    )
+    model.fit(
+        X_train, y_train,
+        cat_features=cat_features,
+        eval_set=(X_test, y_test)
+    )
+    print('Iteration' + str(i))
+    scores[i] = model.best_score_['validation']['RMSE']
+
+np.mean(scores)
+
+pred = model.predict(data=X_test)
+
+sns.jointplot(x=pred, y=y_test, height=8)
+plt.show()
+
+
 print('Model is fitted: ' + str(model.is_fitted()))
 print('Model params:')
 print(model.get_params())
