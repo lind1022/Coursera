@@ -184,7 +184,7 @@ for month_shift in shift_range:
 
 del train_shift
 
-# Don't use old data from year 2013
+# Don't use old data from year 2013 because they don't have a lag
 train = train[train['date_block_num'] >= 12]
 
 
@@ -199,7 +199,13 @@ item_category_mapping = items[['item_id','item_category_id']].drop_duplicates()
 
 train = pd.merge(train, item_category_mapping, how='left', on='item_id')
 
-gc.collect();
+# gc.collect();
+
+
+
+##########################
+# Mean encoding features #
+##########################
 
 
 
