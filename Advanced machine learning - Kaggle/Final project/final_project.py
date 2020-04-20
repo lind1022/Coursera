@@ -79,8 +79,8 @@ def downcast_dtypes(df):
 
     return df
 
-# DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
-DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
+DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
+# DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
 
 trans           = pd.read_csv(os.path.join(DATA_FOLDER, 'sales_train.csv.gz'))
 items           = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
@@ -223,19 +223,23 @@ train = pd.merge(train, item_price_mapping, how='left', on='item_id')
 # Rolling Window Calculations #
 ###############################
 # Rolling Min
-f_min = lambda x: x.rolling(window=3, min_periods=1).min
+f_min = lambda x: x.rolling(window=3, min_periods=1).min()
 # Rolling Max
-f_max = lambda x: x.rolling(window=3, min_periods=1).max
+f_max = lambda x: x.rolling(window=3, min_periods=1).max()
 # Rolling Mean
-f_mean = lambda x: x.rolling(window=3, min_periods=1).mean
+f_mean = lambda x: x.rolling(window=3, min_periods=1).mean()
 # Rolling Stardard Deviation
-f_sd = lambda x: x.rolling(window=3, min_periods=1).std
+f_sd = lambda x: x.rolling(window=3, min_periods=1).std()
 
 func_list = [f_min, f_max, f_mean, f_sd]
 func_name = ['min', 'max', 'mean', 'sd']
 
 for i in range(len(func_list)):
-    train[('item_cnt_%s' % func_name[i])] = train.sort_values('date_block_num').groupby(['shop_id', 'item_category_id', 'item_id'])['item_cnt_day'].apply(function_list[i])
+    train[('item_cnt_%s' % func_name[i])] = train.sort_values('date_block_num').groupby(['shop_id', 'item_category_id', 'item_id'])['target'].apply(func_list[i])
+
+# Fill the empty std features with 0
+train['item_cnt_sd'].fillna(0, inplace=True)
+
 
 # List of all lagged features
 fit_cols = [col for col in train.columns if col[-1] in [str(item) for item in shift_range]]
@@ -249,7 +253,7 @@ to_drop_cols = list(set(list(train.columns)) - (set(fit_cols)|set(index_cols))) 
 # Group Based Features #
 ########################
 # Item history min and max prices
-gp_item_price = trans.groupby(['item_id'], as_index=False).agg({'item_price':[np.min, np.max]})
+gp_item_price = train.groupby(['item_id'], as_index=False).agg({'item_price':[np.min, np.max]})
 gp_item_price.columns = ['item_id', 'min_item_price', 'max_item_price']
 
 train = pd.merge(train, gp_item_price, how='left', on='item_id')
