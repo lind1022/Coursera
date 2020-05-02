@@ -79,8 +79,8 @@ def downcast_dtypes(df):
 
     return df
 
-DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
-# DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
+# DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
+DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
 
 trans           = pd.read_csv(os.path.join(DATA_FOLDER, 'sales_train.csv.gz'))
 items           = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
@@ -174,7 +174,9 @@ for block_num in trans['date_block_num'].unique():
 grid = pd.DataFrame(np.vstack(grid), columns = index_cols, dtype=np.int32)
 
 # Aggregate to montly data by month, shop, item
-gb = trans.groupby(['date_block_num', 'shop_id', 'item_id']).agg(target=('item_cnt_day', 'sum')).reset_index()
+gb = trans.groupby(['date_block_num', 'shop_id', 'item_category_id', 'item_id']).agg({'item_cnt_day': 'sum', 'item_price': 'mean'}).reset_index()
+gb.columns = ['date_block_num', 'shop_id', 'item_category_id', 'item_id', 'item_price', 'target']
+
 train = pd.merge(grid, gb, how='left', on=['date_block_num', 'shop_id', 'item_id']).fillna(0)
 
 # Aggregate to item-month
@@ -184,6 +186,8 @@ train = pd.merge(train, gb, how='left', on=['date_block_num', 'item_id']).fillna
 # Aggregate to shop-month
 gb = trans.groupby(['date_block_num', 'shop_id']).agg(shop_month=('item_cnt_day', 'sum')).reset_index()
 train = pd.merge(train, gb, how='left', on=['date_block_num', 'shop_id']).fillna(0)
+
+
 
 train = downcast_dtypes(train)
 
@@ -195,7 +199,7 @@ train = downcast_dtypes(train)
 # Creating a lag term
 cols_to_rename = list(train.columns.difference(index_cols))
 
-shift_range = [1, 2, 3, 4, 5, 12]
+shift_range = [1, 2, 3, 6]
 
 for month_shift in shift_range:
     train_shift = train[index_cols + cols_to_rename].copy()
@@ -209,7 +213,7 @@ for month_shift in shift_range:
 del train_shift
 
 # Don't use old data from year 2013 because they don't have a lag
-train = train[train['date_block_num'] >= 12]
+train = train[train['date_block_num'] >= 6]
 
 # Category for each item
 item_category_mapping = items[['item_id','item_category_id']].drop_duplicates()
@@ -242,10 +246,10 @@ train['item_cnt_sd'].fillna(0, inplace=True)
 
 
 # List of all lagged features
-fit_cols = [col for col in train.columns if col[-1] in [str(item) for item in shift_range]]
+# fit_cols = [col for col in train.columns if col[-1] in [str(item) for item in shift_range]]
 
 # We will drop these at fitting stage
-to_drop_cols = list(set(list(train.columns)) - (set(fit_cols)|set(index_cols))) + ['date_block_num']
+# to_drop_cols = list(set(list(train.columns)) - (set(fit_cols)|set(index_cols))) + ['date_block_num']
 
 
 
@@ -253,7 +257,7 @@ to_drop_cols = list(set(list(train.columns)) - (set(fit_cols)|set(index_cols))) 
 # Group Based Features #
 ########################
 # Item history min and max prices
-gp_item_price = train.groupby(['item_id'], as_index=False).agg({'item_price':[np.min, np.max]})
+gp_item_price = train.sort_values('date_block_num').groupby(['item_id'], as_index=False).agg({'item_price':[np.min, np.max]})
 gp_item_price.columns = ['item_id', 'min_item_price', 'max_item_price']
 
 train = pd.merge(train, gp_item_price, how='left', on='item_id')
@@ -262,27 +266,24 @@ train = pd.merge(train, gp_item_price, how='left', on='item_id')
 train['price_increase'] = train['max_item_price'] - train['item_price']
 train['price_decrease'] = train['item_price'] - train['min_item_price']
 
-# gc.collect();
-
-
+train.head().T
 
 #####################
 # Train/test split
 #####################
-# Save `date_block_num`, as we can't use them as features, but will need them to split the dataset into parts
-dates = train['date_block_num']
+train_set = train.query('date_block_num < 28').copy()
+validation_set = train.query('date_block_num >= 28 and date_block_num < 33').copy()
+test_set = train.query('date_block_num == 33').copy()
 
-last_block = dates.max()
-print('Test `date_block_num` is %d' % last_block)
+train_set.dropna(subset=['target'], inplace=True)
+validation_set.dropna(subset=['target'], inplace=True)
 
-dates_train = dates[dates <  last_block]
-dates_test  = dates[dates == last_block]
+train_set.dropna(inplace=True)
+validation_set.dropna(inplace=True)
 
-X_train = train.loc[dates <  last_block].drop(to_drop_cols, axis=1)
-X_test =  train.loc[dates == last_block].drop(to_drop_cols, axis=1)
-
-y_train = train.loc[dates <  last_block, 'target'].values
-y_test =  train.loc[dates == last_block, 'target'].values
+print('Train set records:', train_set.shape[0])
+print('Validation set records:', validation_set.shape[0])
+print('Test set records:', test_set.shape[0])
 
 ##########################
 # Mean encoding features #
