@@ -123,20 +123,20 @@ gp_shop_mean = trans.groupby(['shop_id'], as_index=False)['item_cnt_day'].mean()
 gp_shop_sum = trans.groupby(['shop_id'], as_index=False)['item_cnt_day'].sum()
 
 
-f, axes = plt.subplots(2, 1, figsize=(22, 10), sharex=True)
-sns.barplot(x="item_category_id", y="item_cnt_day", data=gp_category_mean, ax=axes[0], palette="rocket").set_title("Monthly mean")
-sns.barplot(x="item_category_id", y="item_cnt_day", data=gp_category_sum, ax=axes[1], palette="rocket").set_title("Monthly sum")
-plt.show()
-
-f, axes = plt.subplots(2, 1, figsize=(22, 10), sharex=True)
-sns.lineplot(x="month", y="item_cnt_day", data=gp_month_mean, ax=axes[0], palette="rocket").set_title("Monthly mean")
-sns.lineplot(x="month", y="item_cnt_day", data=gp_month_sum, ax=axes[1], palette="rocket").set_title("Monthly sum")
-plt.show()
-
-f, axes = plt.subplots(2, 1, figsize=(22, 10), sharex=True)
-sns.barplot(x="shop_id", y="item_cnt_day", data=gp_shop_mean, ax=axes[0], palette="rocket").set_title("Monthly mean")
-sns.barplot(x="shop_id", y="item_cnt_day", data=gp_shop_sum, ax=axes[1], palette="rocket").set_title("Monthly sum")
-plt.show()
+# f, axes = plt.subplots(2, 1, figsize=(22, 10), sharex=True)
+# sns.barplot(x="item_category_id", y="item_cnt_day", data=gp_category_mean, ax=axes[0], palette="rocket").set_title("Monthly mean")
+# sns.barplot(x="item_category_id", y="item_cnt_day", data=gp_category_sum, ax=axes[1], palette="rocket").set_title("Monthly sum")
+# plt.show()
+#
+# f, axes = plt.subplots(2, 1, figsize=(22, 10), sharex=True)
+# sns.lineplot(x="month", y="item_cnt_day", data=gp_month_mean, ax=axes[0], palette="rocket").set_title("Monthly mean")
+# sns.lineplot(x="month", y="item_cnt_day", data=gp_month_sum, ax=axes[1], palette="rocket").set_title("Monthly sum")
+# plt.show()
+#
+# f, axes = plt.subplots(2, 1, figsize=(22, 10), sharex=True)
+# sns.barplot(x="shop_id", y="item_cnt_day", data=gp_shop_mean, ax=axes[0], palette="rocket").set_title("Monthly mean")
+# sns.barplot(x="shop_id", y="item_cnt_day", data=gp_shop_sum, ax=axes[1], palette="rocket").set_title("Monthly sum")
+# plt.show()
 
 ########################
 # Feature Engineering
@@ -173,21 +173,13 @@ for block_num in trans['date_block_num'].unique():
 # Turn the grid into a dataframe
 grid = pd.DataFrame(np.vstack(grid), columns = index_cols, dtype=np.int32)
 
-# Aggregate to montly data by month, shop, item
+# Aggregate to monthly data by month, shop, item
 gb = trans.groupby(['date_block_num', 'shop_id', 'item_category_id', 'item_id']).agg({'item_cnt_day': 'sum', 'item_price': 'mean'}).reset_index()
 gb.columns = ['date_block_num', 'shop_id', 'item_category_id', 'item_id', 'item_price', 'target']
 
 train = pd.merge(grid, gb, how='left', on=['date_block_num', 'shop_id', 'item_id']).fillna(0)
 
-# Aggregate to item-month
-gb = trans.groupby(['date_block_num', 'item_id']).agg(item_month=('item_cnt_day', 'sum')).reset_index()
-train = pd.merge(train, gb, how='left', on=['date_block_num', 'item_id']).fillna(0)
-
-# Aggregate to shop-month
-gb = trans.groupby(['date_block_num', 'shop_id']).agg(shop_month=('item_cnt_day', 'sum')).reset_index()
-train = pd.merge(train, gb, how='left', on=['date_block_num', 'shop_id']).fillna(0)
-
-
+del gb
 
 train = downcast_dtypes(train)
 
@@ -216,11 +208,11 @@ del train_shift
 train = train[train['date_block_num'] >= 6]
 
 # Category for each item
-item_category_mapping = items[['item_id','item_category_id']].drop_duplicates()
-item_price_mapping = trans[['item_id', 'item_price']].drop_duplicates()
-
-train = pd.merge(train, item_category_mapping, how='left', on='item_id')
-train = pd.merge(train, item_price_mapping, how='left', on='item_id')
+# item_category_mapping = items[['item_id','item_category_id']].drop_duplicates()
+# item_price_mapping = trans[['item_id', 'item_price']].drop_duplicates()
+#
+# train = pd.merge(train, item_category_mapping, how='left', on='item_id')
+# train = pd.merge(train, item_price_mapping, how='left', on='item_id')
 
 
 ###############################
@@ -291,10 +283,33 @@ print('Test set records:', test_set.shape[0])
 # To be done after train test split
 
 
+# Shop mean sales
+gp_shop = train_set.groupby('shop_id', as_index=False).agg({'target': ['mean', 'std']})
+gp_shop.columns = ['shop_id', 'shop_mean', 'shop_std']
+
+gp_item = train_set.groupby('item_id', as_index=False).agg({'target': ['mean', 'std']})
+gp_item.columns = ['item_id', 'item_mean', 'item_std']
+
+gp_shop_item = train_set.groupby(['shop_id', 'item_id'], as_index=False).agg({'target': ['mean', 'std']})
+gp_shop_item.columns = ['shop_id', 'item_id', 'shop_item_mean', 'shop_item_std']
+
+# Aggregate to item-month
+gp_item_month = train_set.groupby(['date_block_num', 'item_id'], as_index=False).agg({'target': ['mean', 'std']})
+gp_item_month.columns = ['date_block_num', 'item_id', 'item_month_mean', 'item_month_std']
+
+# Aggregate to shop-month
+gp_shop_month = train_set.groupby(['date_block_num', 'shop_id'], as_index=False).agg({'target': ['mean', 'std']})
+gp_shop_month.columns = ['date_block_num', 'shop_id', 'shop_month_mean', 'shop_month_std']
+
+# Join them to the training data
+train_set = pd.merge(train_set, gp_shop, on='shop_id', how='left')
+
+
+
 ####################################
 # A baseline model using catboost
 ####################################
-pool = Pool(data=X_train, label=y_train)
+pool = Pool(data=X_train, label=y_train)46
 print(pool.get_feature_names())
 
 cat_features = ['shop_id', 'item_id', 'item_category_id']
