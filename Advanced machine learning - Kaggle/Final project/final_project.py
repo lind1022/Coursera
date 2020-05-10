@@ -174,10 +174,11 @@ for block_num in trans['date_block_num'].unique():
 grid = pd.DataFrame(np.vstack(grid), columns = index_cols, dtype=np.int32)
 
 # Aggregate to monthly data by month, shop, item
-gb = trans.groupby(['date_block_num', 'shop_id', 'item_category_id', 'item_id']).agg({'item_cnt_day': 'sum', 'item_price': 'mean'}).reset_index()
-gb.columns = ['date_block_num', 'shop_id', 'item_category_id', 'item_id', 'item_price', 'target']
-
+gb = trans.groupby(['date_block_num', 'year', 'month', 'shop_id', 'item_category_id', 'item_id']).agg({'item_cnt_day': 'sum', 'item_price': 'mean'}).reset_index()
+gb.columns = ['date_block_num', 'year', 'month', 'shop_id', 'item_category_id', 'item_id', 'item_price', 'item_cnt_month']
 train = pd.merge(grid, gb, how='left', on=['date_block_num', 'shop_id', 'item_id']).fillna(0)
+
+train['target'] = train.sort_values('date_block_num').groupby(['shop_id', 'item_id'])['item_cnt_month'].shift(-1)
 
 del gb
 
@@ -189,7 +190,7 @@ train = downcast_dtypes(train)
 #############################
 
 # Creating a lag term
-cols_to_rename = list(train.columns.difference(index_cols))
+cols_to_rename = ['item_cnt_month']
 
 shift_range = [1, 2, 3, 6]
 
@@ -215,6 +216,19 @@ train = train[train['date_block_num'] >= 6]
 # train = pd.merge(train, item_price_mapping, how='left', on='item_id')
 
 
+###################
+# Trend Features
+###################
+train['item_trend'] = train['item_cnt_month']
+
+for lag in shift_range:
+    ft_name = ('item_cnt_month_lag_%s' % lag)
+    train['item_trend'] -= train[ft_name]
+
+train['item_trend'] /= len(shift_range) + 1
+
+
+
 ###############################
 # Rolling Window Calculations #
 ###############################
@@ -231,7 +245,7 @@ func_list = [f_min, f_max, f_mean, f_sd]
 func_name = ['min', 'max', 'mean', 'sd']
 
 for i in range(len(func_list)):
-    train[('item_cnt_%s' % func_name[i])] = train.sort_values('date_block_num').groupby(['shop_id', 'item_category_id', 'item_id'])['target'].apply(func_list[i])
+    train[('item_cnt_%s' % func_name[i])] = train.sort_values('date_block_num').groupby(['shop_id', 'item_category_id', 'item_id'])['item_cnt_month'].apply(func_list[i])
 
 # Fill the empty std features with 0
 train['item_cnt_sd'].fillna(0, inplace=True)
@@ -303,8 +317,50 @@ gp_shop_month.columns = ['date_block_num', 'shop_id', 'shop_month_mean', 'shop_m
 
 # Join them to the training data
 train_set = pd.merge(train_set, gp_shop, on='shop_id', how='left')
+train_set = pd.merge(train_set, gp_item, on='item_id', how='left')
+train_set = pd.merge(train_set, gp_shop_item, on=['shop_id', 'item_id'], how='left')
+train_set = pd.merge(train_set, gp_item_month, on=['date_block_num', 'item_id'], how='left')
+train_set = pd.merge(train_set, gp_shop_month, on=['date_block_num', 'shop_id'], how='left')
 
+validation_set = pd.merge(validation_set, gp_shop, on='shop_id', how='left')
+validation_set = pd.merge(validation_set, gp_item, on='item_id', how='left')
+validation_set = pd.merge(validation_set, gp_shop_item, on=['shop_id', 'item_id'], how='left')
+validation_set = pd.merge(validation_set, gp_item_month, on=['date_block_num', 'item_id'], how='left')
+validation_set = pd.merge(validation_set, gp_shop_month, on=['date_block_num', 'shop_id'], how='left')
 
+# Create train and validation sets and labels.
+X_train = train_set.drop(['target', 'date_block_num'], axis=1)
+Y_train = train_set['target'].astype(int)
+X_validation = validation_set.drop(['target', 'date_block_num'], axis=1)
+Y_validation = validation_set['target'].astype(int)
+
+# Integer features (used by catboost model).
+int_features = ['shop_id', 'item_id', 'year', 'month', 'item_category_id']
+
+X_train[int_features] = X_train[int_features].astype('int32')
+X_validation[int_features] = X_validation[int_features].astype('int32')
+
+###############################
+# Preparing the test dataset
+###############################
+# Keep the item shop combination where appeared last
+latest_records = pd.concat([train_set, validation_set]).drop_duplicates(subset=['shop_id', 'item_id'], keep='last')
+X_test = pd.merge(test, latest_records, on=['shop_id', 'item_id'], how='left', suffixes=['', '_'])
+X_test['year'] = 2015
+X_test['month'] = 9
+X_test.drop('item_cnt_month', axis=1, inplace=True)
+X_test[int_features] = X_test[int_features].astype('int32')
+X_test = X_test[X_train.columns]
+
+latest_shops = list(train['shop_id'].drop_duplicates())
+print(len(latest_shops))
+test_shops = list(test_shop_ids)
+print(len(test_shops))
+
+latest_items = list(train['item_id'].drop_duplicates())
+print(len(latest_items))
+test_item = list(test_item_ids)
+print(len(test_item))
 
 ####################################
 # A baseline model using catboost
