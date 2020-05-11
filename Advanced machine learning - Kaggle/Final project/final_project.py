@@ -79,8 +79,8 @@ def downcast_dtypes(df):
 
     return df
 
-# DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
-DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
+DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
+# DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
 
 trans           = pd.read_csv(os.path.join(DATA_FOLDER, 'sales_train.csv.gz'))
 items           = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
@@ -98,6 +98,7 @@ trans['date'] = pd.to_datetime(trans['date'], format='%d.%m.%Y')
 trans['year'] = pd.DatetimeIndex(trans['date']).year
 trans['month'] = pd.DatetimeIndex(trans['date']).month
 trans['day'] = pd.DatetimeIndex(trans['date']).day
+
 
 # The time series range
 print('Timeseries start from ' + str(trans['date'].min()) + ', finish on ' + str(trans['date'].max()))
@@ -208,6 +209,7 @@ del train_shift
 # Don't use old data from year 2013 because they don't have a lag
 train = train[train['date_block_num'] >= 6]
 
+
 # Category for each item
 # item_category_mapping = items[['item_id','item_category_id']].drop_duplicates()
 # item_price_mapping = trans[['item_id', 'item_price']].drop_duplicates()
@@ -256,8 +258,6 @@ train['item_cnt_sd'].fillna(0, inplace=True)
 
 # We will drop these at fitting stage
 # to_drop_cols = list(set(list(train.columns)) - (set(fit_cols)|set(index_cols))) + ['date_block_num']
-
-
 
 ########################
 # Group Based Features #
@@ -352,15 +352,6 @@ X_test.drop('item_cnt_month', axis=1, inplace=True)
 X_test[int_features] = X_test[int_features].astype('int32')
 X_test = X_test[X_train.columns]
 
-latest_shops = list(train['shop_id'].drop_duplicates())
-print(len(latest_shops))
-test_shops = list(test_shop_ids)
-print(len(test_shops))
-
-latest_items = list(train['item_id'].drop_duplicates())
-print(len(latest_items))
-test_item = list(test_item_ids)
-print(len(test_item))
 
 ####################################
 # A baseline model using catboost
