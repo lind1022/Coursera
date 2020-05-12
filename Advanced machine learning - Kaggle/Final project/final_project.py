@@ -79,8 +79,8 @@ def downcast_dtypes(df):
 
     return df
 
-DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
-# DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
+# DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
+DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
 
 trans           = pd.read_csv(os.path.join(DATA_FOLDER, 'sales_train.csv.gz'))
 items           = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
@@ -180,11 +180,12 @@ grid = pd.DataFrame(np.vstack(grid), columns = index_cols, dtype=np.int32)
 
 # need to add category, year and month mapping
 grid = pd.merge(grid, item_category_mapping, on='item_id', how='left')
+year_date_mapping = trans[['date_block_num', 'year', 'month']].drop_duplicates()
 grid = pd.merge(grid, year_date_mapping, on='date_block_num', how='left')
 
 # Aggregate to monthly data by month, shop, item
-gb = trans.groupby(['date_block_num', 'year', 'month', 'shop_id', 'item_category_id', 'item_id']).agg({'item_cnt_day': 'sum', 'item_price': 'mean'}).reset_index()
-gb.columns = ['date_block_num', 'year', 'month', 'shop_id', 'item_category_id', 'item_id', 'item_price', 'item_cnt_month']
+gb = trans.groupby(['date_block_num', 'shop_id', 'item_id']).agg({'item_cnt_day': 'sum', 'item_price': 'mean'}).reset_index()
+gb.columns = ['date_block_num', 'shop_id', 'item_id', 'item_price', 'item_cnt_month']
 train = pd.merge(grid, gb, how='left', on=['date_block_num', 'shop_id', 'item_id']).fillna(0)
 
 train['target'] = train.sort_values('date_block_num').groupby(['shop_id', 'item_id'])['item_cnt_month'].shift(-1)
@@ -364,7 +365,7 @@ X_test = X_test[X_train.columns]
 ####################################
 # A baseline model using catboost
 ####################################
-pool = Pool(data=X_train, label=y_train)46
+pool = Pool(data=X_train, label=Y_train)
 print(pool.get_feature_names())
 
 cat_features = ['shop_id', 'item_id', 'item_category_id']
@@ -377,9 +378,9 @@ for i in range(10):
         learning_rate=0.1
     )
     model.fit(
-        X_train, y_train,
+        X_train, Y_train,
         cat_features=cat_features,
-        eval_set=(X_test, y_test)
+        eval_set=(X_validation, Y_validation)
     )
     print('Iteration' + str(i))
     scores[i] = model.best_score_['validation']['RMSE']
