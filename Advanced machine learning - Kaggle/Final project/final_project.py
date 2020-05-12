@@ -163,16 +163,24 @@ trans = trans[trans['item_id'].isin(test_item_ids)]
 
 index_cols = ['shop_id', 'item_id', 'date_block_num']
 
-
 # For every month we create a grid from all shops/items combinations from that month
-grid = []
-for block_num in trans['date_block_num'].unique():
-    cur_shops = trans.loc[trans['date_block_num'] == block_num, 'shop_id'].unique()
-    cur_items = trans.loc[trans['date_block_num'] == block_num, 'item_id'].unique()
-    grid.append(np.array(list(product(*[cur_shops, cur_items, [block_num]])),dtype='int32'))
+# grid = []
+# for block_num in trans['date_block_num'].unique():
+#     cur_shops = trans.loc[trans['date_block_num'] == block_num, 'shop_id'].unique()
+#     cur_items = trans.loc[trans['date_block_num'] == block_num, 'item_id'].unique()
+#     grid.append(np.array(list(product(*[cur_shops, cur_items, [block_num]])),dtype='int32'))
+
+block_nums = trans['date_block_num'].unique()
+all_shops = trans.loc[:,'shop_id'].unique()
+all_items = trans.loc[:,'item_id'].unique()
+grid = np.array(list(product(*[test_shop_ids, test_item_ids, block_nums])),dtype='int32')
 
 # Turn the grid into a dataframe
 grid = pd.DataFrame(np.vstack(grid), columns = index_cols, dtype=np.int32)
+
+# need to add category, year and month mapping
+grid = pd.merge(grid, item_category_mapping, on='item_id', how='left')
+grid = pd.merge(grid, year_date_mapping, on='date_block_num', how='left')
 
 # Aggregate to monthly data by month, shop, item
 gb = trans.groupby(['date_block_num', 'year', 'month', 'shop_id', 'item_category_id', 'item_id']).agg({'item_cnt_day': 'sum', 'item_price': 'mean'}).reset_index()
@@ -272,7 +280,6 @@ train = pd.merge(train, gp_item_price, how='left', on='item_id')
 train['price_increase'] = train['max_item_price'] - train['item_price']
 train['price_decrease'] = train['item_price'] - train['min_item_price']
 
-train.head().T
 
 #####################
 # Train/test split
@@ -290,6 +297,7 @@ validation_set.dropna(inplace=True)
 print('Train set records:', train_set.shape[0])
 print('Validation set records:', validation_set.shape[0])
 print('Test set records:', test_set.shape[0])
+
 
 ##########################
 # Mean encoding features #
@@ -348,7 +356,7 @@ latest_records = pd.concat([train_set, validation_set]).drop_duplicates(subset=[
 X_test = pd.merge(test, latest_records, on=['shop_id', 'item_id'], how='left', suffixes=['', '_'])
 X_test['year'] = 2015
 X_test['month'] = 9
-X_test.drop('item_cnt_month', axis=1, inplace=True)
+X_test.drop('target', axis=1, inplace=True)
 X_test[int_features] = X_test[int_features].astype('int32')
 X_test = X_test[X_train.columns]
 
