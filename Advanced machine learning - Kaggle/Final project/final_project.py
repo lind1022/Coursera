@@ -16,6 +16,7 @@ import itertools
 from statsmodels.tsa.arima_model import ARIMA
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from pandas.plotting import autocorrelation_plot
+from sklearn.metrics import mean_squared_error
 from statsmodels.tsa.stattools import adfuller, acf, pacf,arma_order_select_ic
 
 from catboost import *
@@ -79,8 +80,8 @@ def downcast_dtypes(df):
 
     return df
 
-# DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
-DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
+DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
+# DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
 
 trans           = pd.read_csv(os.path.join(DATA_FOLDER, 'sales_train.csv.gz'))
 items           = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
@@ -146,10 +147,6 @@ gp_shop_sum = trans.groupby(['shop_id'], as_index=False)['item_cnt_day'].sum()
 # Sort by date
 trans = trans.sort_values('date_block_num')
 
-# Clip sales values into the [0, 20] range
-trans['item_cnt_day'][trans['item_cnt_day'] < 0] = 0
-trans['item_cnt_day'][trans['item_cnt_day'] > 20] = 20
-
 # Drop item name column, consider it as un-useful for now
 trans = trans.drop(columns = ['date'])
 
@@ -185,15 +182,24 @@ grid = pd.merge(grid, year_date_mapping, on='date_block_num', how='left')
 
 # Aggregate to monthly data by month, shop, item
 gb = trans.groupby(['date_block_num', 'shop_id', 'item_id']).agg({'item_cnt_day': 'sum', 'item_price': 'mean'}).reset_index()
-gb.columns = ['date_block_num', 'shop_id', 'item_id', 'item_price', 'item_cnt_month']
+gb.columns = ['date_block_num', 'shop_id', 'item_id', 'item_cnt_month', 'item_price']
+
+
+plt.subplots(figsize=(22, 8))
+sns.boxplot(gb['item_cnt_month'])
+plt.show()
+
+# Clip sales values into the [0, 20] range
+gb['item_cnt_month'][gb['item_cnt_month'] < 0] = 0
+gb['item_cnt_month'][gb['item_cnt_month'] > 20] = 20
+
 train = pd.merge(grid, gb, how='left', on=['date_block_num', 'shop_id', 'item_id']).fillna(0)
-
-train['target'] = train.sort_values('date_block_num').groupby(['shop_id', 'item_id'])['item_cnt_month'].shift(-1)
-
 del gb
 
-train = downcast_dtypes(train)
+# Create target variable
+train['target'] = train.sort_values('date_block_num').groupby(['shop_id', 'item_id'])['item_cnt_month'].shift(-1)
 
+train = downcast_dtypes(train)
 
 #############################
 # Adding lag based features
@@ -361,6 +367,14 @@ X_test.drop('target', axis=1, inplace=True)
 X_test[int_features] = X_test[int_features].astype('int32')
 X_test = X_test[X_train.columns]
 
+# Replace missing values with the median of each shop.
+sets = [X_train, X_validation, X_test]
+for dataset in sets:
+    for shop_id in dataset['shop_id'].unique():
+        for column in dataset.columns:
+            shop_median = dataset[(dataset['shop_id'] == shop_id)][column].median()
+            dataset.loc[(dataset[column].isnull()) & (dataset['shop_id'] == shop_id), column] = shop_median
+
 
 ####################################
 # A baseline model using catboost
@@ -370,24 +384,40 @@ print(pool.get_feature_names())
 
 cat_features = ['shop_id', 'item_id', 'item_category_id']
 # Training 10 models with different random seed and average the score
-scores = np.zeros(10)
-for i in range(10):
-    model = CatBoostRegressor(
-        iterations=5,
-        random_seed=i,
-        learning_rate=0.1
-    )
-    model.fit(
-        X_train, Y_train,
-        cat_features=cat_features,
-        eval_set=(X_validation, Y_validation)
-    )
-    print('Iteration' + str(i))
-    scores[i] = model.best_score_['validation']['RMSE']
 
-np.mean(scores)
+catboost_model = CatBoostRegressor(
+    iterations=5,
+    random_seed=i,
+    learning_rate=0.1
+)
+catboost_model.fit(
+    X_train, Y_train,
+    cat_features=cat_features,
+    eval_set=(X_validation, Y_validation)
+)
+scores = catboost_model.best_score_['validation']['RMSE']
 
-pred = model.predict(data=X_test)
+
+catboost_train_pred = catboost_model.predict(X_train)
+catboost_val_pred = catboost_model.predict(X_validation)
+catboost_test_pred = catboost_model.predict(X_test)
+
+def model_performance_sc_plot(predictions, labels, title):
+    # Get min and max values of the predictions and labels.
+    min_val = max(max(predictions), max(labels))
+    max_val = min(min(predictions), min(labels))
+    # Create dataframe with predicitons and labels.
+    performance_df = pd.DataFrame({"Label":labels})
+    performance_df["Prediction"] = predictions
+    # Plot data
+    sns.jointplot(y="Label", x="Prediction", data=performance_df, kind="reg", height=7)
+    plt.plot([min_val, max_val], [min_val, max_val], 'm--')
+    plt.title(title, fontsize=9)
+    plt.show()
+
+# model_performance_sc_plot(catboost_train_pred, Y_train, 'Train')
+model_performance_sc_plot(catboost_val_pred, Y_validation, 'Validation')
+
 
 sns.jointplot(x=pred, y=y_test, height=8)
 plt.show()
