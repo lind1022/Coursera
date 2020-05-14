@@ -80,8 +80,8 @@ def downcast_dtypes(df):
 
     return df
 
-DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
-# DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
+# DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
+DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
 
 trans           = pd.read_csv(os.path.join(DATA_FOLDER, 'sales_train.csv.gz'))
 items           = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
@@ -181,9 +181,9 @@ year_date_mapping = trans[['date_block_num', 'year', 'month']].drop_duplicates()
 grid = pd.merge(grid, year_date_mapping, on='date_block_num', how='left')
 
 # Aggregate to monthly data by month, shop, item
-gb = trans.groupby(['date_block_num', 'shop_id', 'item_id']).agg({'item_cnt_day': 'sum', 'item_price': 'mean'}).reset_index()
+col_order = ['date_block_num', 'shop_id', 'item_id', 'item_cnt_day', 'item_price']
+gb = trans.groupby(['date_block_num', 'shop_id', 'item_id'], as_index=False).agg({'item_cnt_day': 'sum', 'item_price': 'mean'})[col_order]
 gb.columns = ['date_block_num', 'shop_id', 'item_id', 'item_cnt_month', 'item_price']
-
 
 plt.subplots(figsize=(22, 8))
 sns.boxplot(gb['item_cnt_month'])
@@ -368,12 +368,12 @@ X_test[int_features] = X_test[int_features].astype('int32')
 X_test = X_test[X_train.columns]
 
 # Replace missing values with the median of each shop.
-sets = [X_train, X_validation, X_test]
-for dataset in sets:
-    for shop_id in dataset['shop_id'].unique():
-        for column in dataset.columns:
-            shop_median = dataset[(dataset['shop_id'] == shop_id)][column].median()
-            dataset.loc[(dataset[column].isnull()) & (dataset['shop_id'] == shop_id), column] = shop_median
+# sets = [X_train, X_validation, X_test]
+# for dataset in sets:
+#     for shop_id in dataset['shop_id'].unique():
+#         for column in dataset.columns:
+#             shop_median = dataset[(dataset['shop_id'] == shop_id)][column].median()
+#             dataset.loc[(dataset[column].isnull()) & (dataset['shop_id'] == shop_id), column] = shop_median
 
 
 ####################################
@@ -382,20 +382,36 @@ for dataset in sets:
 pool = Pool(data=X_train, label=Y_train)
 print(pool.get_feature_names())
 
-cat_features = ['shop_id', 'item_id', 'item_category_id']
-# Training 10 models with different random seed and average the score
+cat_features = ['shop_id', 'item_id', 'item_category_id', 'year', 'month']
+
 
 catboost_model = CatBoostRegressor(
-    iterations=5,
-    random_seed=i,
-    learning_rate=0.1
+    iterations=500,
+    max_ctr_complexity=4,
+    random_seed=0,
+    od_type='Iter',
+    od_wait=25,
+    verbose=50,
+    depth=4
 )
+
 catboost_model.fit(
     X_train, Y_train,
     cat_features=cat_features,
     eval_set=(X_validation, Y_validation)
 )
-scores = catboost_model.best_score_['validation']['RMSE']
+
+# catboost_model = CatBoostRegressor(
+#     iterations=5,
+#     random_seed=3,
+#     learning_rate=0.1
+# )
+# catboost_model.fit(
+#     X_train, Y_train,
+#     cat_features=cat_features,
+#     eval_set=(X_validation, Y_validation)
+# )
+catboost_model.best_score_['validation']['RMSE']
 
 
 catboost_train_pred = catboost_model.predict(X_train)
