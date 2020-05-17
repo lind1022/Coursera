@@ -17,6 +17,7 @@ from statsmodels.tsa.arima_model import ARIMA
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from pandas.plotting import autocorrelation_plot
 from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import LabelEncoder
 from statsmodels.tsa.stattools import adfuller, acf, pacf,arma_order_select_ic
 
 from catboost import *
@@ -144,6 +145,22 @@ gp_shop_sum = trans.groupby(['shop_id'], as_index=False)['item_cnt_day'].sum()
 # Feature Engineering
 ########################
 
+# Item/Shop/Category features
+
+shops.loc[shops.shop_name == 'Сергиев Посад ТЦ "7Я"', 'shop_name'] = 'СергиевПосад ТЦ "7Я"'
+shops['city'] = shops['shop_name'].str.split(' ').map(lambda x: x[0])
+shops.loc[shops.city == '!Якутск', 'city'] = 'Якутск'
+shops['city_code'] = LabelEncoder().fit_transform(shops['city'])
+shops = shops[['shop_id','city_code']]
+
+item_categories['split'] = item_categories['item_category_name'].str.split('-')
+item_categories['type'] = item_categories['split'].map(lambda x: x[0].strip())
+item_categories['type_code'] = LabelEncoder().fit_transform(item_categories['type'])
+# if subtype is nan then type
+item_categories['subtype'] = item_categories['split'].map(lambda x: x[1].strip() if len(x) > 1 else x[0].strip())
+item_categories['subtype_code'] = LabelEncoder().fit_transform(item_categories['subtype'])
+item_categories = item_categories[['item_category_id','type_code', 'subtype_code']]
+
 # Sort by date
 trans = trans.sort_values('date_block_num')
 
@@ -161,12 +178,6 @@ trans = trans[trans['item_id'].isin(test_item_ids)]
 index_cols = ['shop_id', 'item_id', 'date_block_num']
 
 # For every month we create a grid from all shops/items combinations from that month
-# grid = []
-# for block_num in trans['date_block_num'].unique():
-#     cur_shops = trans.loc[trans['date_block_num'] == block_num, 'shop_id'].unique()
-#     cur_items = trans.loc[trans['date_block_num'] == block_num, 'item_id'].unique()
-#     grid.append(np.array(list(product(*[cur_shops, cur_items, [block_num]])),dtype='int32'))
-
 block_nums = trans['date_block_num'].unique()
 all_shops = trans.loc[:,'shop_id'].unique()
 all_items = trans.loc[:,'item_id'].unique()
@@ -177,7 +188,15 @@ grid = pd.DataFrame(np.vstack(grid), columns = index_cols, dtype=np.int32)
 
 # need to add category, year and month mapping
 grid = pd.merge(grid, item_category_mapping, on='item_id', how='left')
+grid = pd.merge(grid, shops, on='shop_id', how='left')
+grid = pd.merge(grid, item_categories, on='item_category_id', how='left')
+
+# Number of days in the month
+days = pd.Series([31,28,31,30,31,30,31,31,30,31,30,31], index=range(1, 13))
 year_date_mapping = trans[['date_block_num', 'year', 'month']].drop_duplicates()
+
+year_date_mapping['days'] = year_date_mapping['month'].map(days)
+
 grid = pd.merge(grid, year_date_mapping, on='date_block_num', how='left')
 
 # Aggregate to monthly data by month, shop, item
@@ -200,6 +219,10 @@ del gb
 train['target'] = train.sort_values('date_block_num').groupby(['shop_id', 'item_id'])['item_cnt_month'].shift(-1)
 
 train = downcast_dtypes(train)
+
+
+
+
 
 #############################
 # Adding lag based features
@@ -323,25 +346,90 @@ gp_shop_item = train_set.groupby(['shop_id', 'item_id'], as_index=False).agg({'t
 gp_shop_item.columns = ['shop_id', 'item_id', 'shop_item_mean', 'shop_item_std']
 
 # Aggregate to item-month
-gp_item_month = train_set.groupby(['date_block_num', 'item_id'], as_index=False).agg({'target': ['mean', 'std']})
-gp_item_month.columns = ['date_block_num', 'item_id', 'item_month_mean', 'item_month_std']
+gp_item_month = train_set.groupby(['month', 'item_id'], as_index=False).agg({'target': ['mean', 'std']})
+gp_item_month.columns = ['month', 'item_id', 'item_month_mean', 'item_month_std']
 
 # Aggregate to shop-month
-gp_shop_month = train_set.groupby(['date_block_num', 'shop_id'], as_index=False).agg({'target': ['mean', 'std']})
-gp_shop_month.columns = ['date_block_num', 'shop_id', 'shop_month_mean', 'shop_month_std']
+gp_shop_month = train_set.groupby(['month', 'shop_id'], as_index=False).agg({'target': ['mean', 'std']})
+gp_shop_month.columns = ['month', 'shop_id', 'shop_month_mean', 'shop_month_std']
+
+# Year mean encoding.
+gp_year = train_set.groupby(['year'], as_index=False).agg({'target': ['mean']})
+gp_year.columns = ['year', 'year_mean']
+
+# Month mean encoding.
+gp_month = train_set.groupby(['month'], as_index=False).agg({'target': ['mean']})
+gp_month.columns = ['month', 'month_mean']
+
+# Category mean encoding
+gp_category = train_set.groupby(['item_category_id'], as_index=False).agg({'target': ['mean']})
+gp_category.columns = ['item_category_id', 'category_mean']
+
+# Month Category mean encoding
+gp_category_month = train_set.groupby(['month', 'item_category_id'], as_index=False).agg({'target': ['mean']})
+gp_category_month.columns = ['month', 'item_category_id', 'category_month_mean']
+
+# Category shop mean encoding
+gp_month_category_shop = train_set.groupby(['month', 'item_category_id', 'shop_id'], as_index=False).agg({'target': ['mean']})
+gp_month_category_shop.columns = ['month', 'item_category_id', 'shop_id', 'month_category_shop_mean']
+
+# Shop type mean encoding
+gp_shop_type = train_set.groupby(['shop_id', 'type_code'], as_index=False).agg({'target': ['mean']})
+gp_shop_type.columns = ['shop_id', 'type_code', 'shop_type_mean']
+
+# Month shop type mean encoding
+gp_month_shop_type = train_set.groupby(['month', 'shop_id', 'type_code'], as_index=False).agg({'target': ['mean']})
+gp_month_shop_type.columns = ['month', 'shop_id', 'type_code', 'month_shop_type_mean']
+
+# Shop subtype mean encoding
+gp_month_shop_subtype = train_set.groupby(['month', 'shop_id', 'subtype_code'], as_index=False).agg({'target': ['mean']})
+gp_month_shop_subtype.columns = ['month', 'shop_id', 'subtype_code', 'month_shop_subtype_mean']
+
+# Month city mean encoding
+gp_month_city = train_set.groupby(['month', 'city_code'], as_index=False).agg({'target': ['mean']})
+gp_month_city.columns = ['month', 'city_code', 'month_city_mean']
+
+# Month City Category Encoding
+gp_month_city_category = train_set.groupby(['month', 'city_code', 'item_category_id'], as_index=False).agg({'target': ['mean']})
+gp_month_city_category.columns = ['month', 'city_code', 'item_category_id', 'month_city_category_mean']
+
+
 
 # Join them to the training data
 train_set = pd.merge(train_set, gp_shop, on='shop_id', how='left')
 train_set = pd.merge(train_set, gp_item, on='item_id', how='left')
 train_set = pd.merge(train_set, gp_shop_item, on=['shop_id', 'item_id'], how='left')
-train_set = pd.merge(train_set, gp_item_month, on=['date_block_num', 'item_id'], how='left')
-train_set = pd.merge(train_set, gp_shop_month, on=['date_block_num', 'shop_id'], how='left')
+train_set = pd.merge(train_set, gp_item_month, on=['month', 'item_id'], how='left')
+train_set = pd.merge(train_set, gp_shop_month, on=['month', 'shop_id'], how='left')
+train_set = pd.merge(train_set, gp_year, on='year', how='left')
+train_set = pd.merge(train_set, gp_month, on='month', how='left')
+train_set = pd.merge(train_set, gp_category, on='item_category_id', how='left')
+train_set = pd.merge(train_set, gp_category_month, on=['month', 'item_category_id'], how='left')
+
+train_set = pd.merge(train_set, gp_month_category_shop, on=['month', 'item_category_id', 'shop_id'], how='left')
+train_set = pd.merge(train_set, gp_shop_type, on=['shop_id', 'type_code'], how='left')
+train_set = pd.merge(train_set, gp_month_shop_type, on=['month', 'shop_id', 'type_code'], how='left')
+train_set = pd.merge(train_set, gp_month_shop_subtype, on=['month', 'shop_id', 'subtype_code'], how='left')
+train_set = pd.merge(train_set, gp_month_city, on=['month', 'city_code'], how='left')
+train_set = pd.merge(train_set, gp_month_city_category, on=['month', 'city_code', 'item_category_id'], how='left')
+
 
 validation_set = pd.merge(validation_set, gp_shop, on='shop_id', how='left')
 validation_set = pd.merge(validation_set, gp_item, on='item_id', how='left')
 validation_set = pd.merge(validation_set, gp_shop_item, on=['shop_id', 'item_id'], how='left')
-validation_set = pd.merge(validation_set, gp_item_month, on=['date_block_num', 'item_id'], how='left')
-validation_set = pd.merge(validation_set, gp_shop_month, on=['date_block_num', 'shop_id'], how='left')
+validation_set = pd.merge(validation_set, gp_item_month, on=['month', 'item_id'], how='left')
+validation_set = pd.merge(validation_set, gp_shop_month, on=['month', 'shop_id'], how='left')
+validation_set = pd.merge(validation_set, gp_year, on='year', how='left')
+validation_set = pd.merge(validation_set, gp_month, on='month', how='left')
+validation_set = pd.merge(validation_set, gp_category, on='item_category_id', how='left')
+validation_set = pd.merge(validation_set, gp_category_month, on=['month', 'item_category_id'], how='left')
+
+validation_set = pd.merge(validation_set, gp_month_category_shop, on=['month', 'item_category_id', 'shop_id'], how='left')
+validation_set = pd.merge(validation_set, gp_shop_type, on=['shop_id', 'type_code'], how='left')
+validation_set = pd.merge(validation_set, gp_month_shop_type, on=['month', 'shop_id', 'type_code'], how='left')
+validation_set = pd.merge(validation_set, gp_month_shop_subtype, on=['month', 'shop_id', 'subtype_code'], how='left')
+validation_set = pd.merge(validation_set, gp_month_city, on=['month', 'city_code'], how='left')
+validation_set = pd.merge(validation_set, gp_month_city_category, on=['month', 'city_code', 'item_category_id'], how='left')
 
 # Create train and validation sets and labels.
 X_train = train_set.drop(['target', 'date_block_num'], axis=1)
@@ -350,10 +438,10 @@ X_validation = validation_set.drop(['target', 'date_block_num'], axis=1)
 Y_validation = validation_set['target'].astype(int)
 
 # Integer features (used by catboost model).
-int_features = ['shop_id', 'item_id', 'year', 'month', 'item_category_id']
-
-X_train[int_features] = X_train[int_features].astype('int32')
-X_validation[int_features] = X_validation[int_features].astype('int32')
+int_features = ['shop_id', 'item_id', 'year', 'month', 'item_category_id', 'city_code', 'type_code', 'subtype_code']
+#
+# X_train[int_features] = X_train[int_features].astype('int32')
+# X_validation[int_features] = X_validation[int_features].astype('int32')
 
 ###############################
 # Preparing the test dataset
@@ -376,14 +464,15 @@ X_test = X_test[X_train.columns]
 #             dataset.loc[(dataset[column].isnull()) & (dataset['shop_id'] == shop_id), column] = shop_median
 
 
+X_train[int_features] = X_train[int_features].astype('int32')
+X_validation[int_features] = X_validation[int_features].astype('int32')
+
+
 ####################################
 # A baseline model using catboost
 ####################################
 pool = Pool(data=X_train, label=Y_train)
 print(pool.get_feature_names())
-
-cat_features = ['shop_id', 'item_id', 'item_category_id', 'year', 'month']
-
 
 catboost_model = CatBoostRegressor(
     iterations=500,
@@ -397,7 +486,7 @@ catboost_model = CatBoostRegressor(
 
 catboost_model.fit(
     X_train, Y_train,
-    cat_features=cat_features,
+    cat_features=int_features,
     eval_set=(X_validation, Y_validation)
 )
 
@@ -434,33 +523,32 @@ def model_performance_sc_plot(predictions, labels, title):
 # model_performance_sc_plot(catboost_train_pred, Y_train, 'Train')
 model_performance_sc_plot(catboost_val_pred, Y_validation, 'Validation')
 
+feature_score = pd.DataFrame(list(zip(X_train.dtypes.index, catboost_model.get_feature_importance(Pool(X_train, label=Y_train, cat_features=cat_features)))), columns=['Feature','Score'])
+feature_score = feature_score.sort_values(by='Score', ascending=False, inplace=False, kind='quicksort', na_position='last')
 
-sns.jointplot(x=pred, y=y_test, height=8)
+plt.rcParams["figure.figsize"] = (19, 6)
+ax = feature_score.plot('Feature', 'Score', kind='bar', color='c')
+ax.set_title("Catboost Feature Importance Ranking", fontsize = 14)
+ax.set_xlabel('')
+rects = ax.patches
+labels = feature_score['Score'].round(2)
+
+for rect, label in zip(rects, labels):
+    height = rect.get_height()
+    ax.text(rect.get_x() + rect.get_width()/2, height + 0.45, label, ha='center', va='bottom')
+
 plt.show()
-
-
-print('Model is fitted: ' + str(model.is_fitted()))
-print('Model params:')
-print(model.get_params())
-
-
 
 
 ###########################################################
 # Creating the prediction baseline with Oct 15 sales
 ###########################################################
 
-oct_15 = ts[(ts.year == 2015) & (ts.month == 10)][['shop_id', 'item_id', 'item_cnt_day']]
-
-pred_test = pd.merge(test, oct_15, on=['shop_id', 'item_id'], how='left')
-pred_test['item_cnt_day'] = pred_test['item_cnt_day'].fillna(0)
-
-# Clip sales values into the [0, 20] range
-pred_test['item_cnt_day'][pred_test['item_cnt_day'] < 0] = 0
-pred_test['item_cnt_day'][pred_test['item_cnt_day'] > 20] = 20
+pred = pd.DataFrame(catboost_test_pred, columns=['item_cnt_month'])
+test['item_cnt_month'] = pred.clip(0, 20)
 
 # File to submit
-submit = pred_test[['ID', 'item_cnt_day']].rename(columns = {'item_cnt_day': 'item_cnt_month'})
+submit = test[['ID', 'item_cnt_month']]
 submit.to_csv("submission.csv", index = False)
 
 
