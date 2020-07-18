@@ -24,6 +24,8 @@ from catboost import *
 import catboost
 from catboost import Pool
 from catboost import CatBoostClassifier
+from xgboost import XGBRegressor
+from xgboost import plot_importance
 %matplotlib qt
 
 
@@ -82,7 +84,10 @@ def downcast_dtypes(df):
     return df
 
 # DATA_FOLDER = 'C:/Users/lind/Coursera/Advanced machine learning - Kaggle/Final project'
-DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
+# DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
+
+# Mac directory
+DATA_FOLDER = '/Users/lind/github/Coursera/Advanced machine learning - Kaggle/Final project'
 
 trans           = pd.read_csv(os.path.join(DATA_FOLDER, 'sales_train.csv.gz'))
 items           = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
