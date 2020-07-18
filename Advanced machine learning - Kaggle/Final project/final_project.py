@@ -473,6 +473,17 @@ X_train[int_features] = X_train[int_features].astype('int32')
 X_validation[int_features] = X_validation[int_features].astype('int32')
 
 
+##########
+# XGboost
+##########
+# Use only part of features on XGBoost.
+xgb_features = ['item_cnt','item_cnt_mean', 'item_cnt_std', 'item_cnt_shifted1',
+                'item_cnt_shifted2', 'item_cnt_shifted3', 'shop_mean',
+                'shop_item_mean', 'item_trend', 'mean_item_cnt']
+xgb_train = X_train[xgb_features]
+xgb_val = X_validation[xgb_features]
+xgb_test = X_test[xgb_features]
+
 ####################################
 # A baseline model using catboost
 ####################################
