@@ -484,6 +484,27 @@ xgb_train = X_train[xgb_features]
 xgb_val = X_validation[xgb_features]
 xgb_test = X_test[xgb_features]
 
+model = XGBRegressor(
+    max_depth=8,
+    n_estimators=1000,
+    min_child_weight=300,
+    colsample_bytree=0.8,
+    subsample=0.8,
+    eta=0.3,
+    seed=42)
+
+model.fit(
+    X_train,
+    Y_train,
+    eval_metric="rmse",
+    eval_set=[(X_train, Y_train), (X_valid, Y_valid)],
+    verbose=True,
+    early_stopping_rounds = 10)
+
+
+
+
+
 ####################################
 # A baseline model using catboost
 ####################################
