@@ -87,7 +87,7 @@ def downcast_dtypes(df):
 # DATA_FOLDER = 'C:/Lin/Data science/Github repo/Coursera/Advanced machine learning - Kaggle/Final project'
 
 # Mac directory
-DATA_FOLDER = '/Users/lind/github/Coursera/Advanced machine learning - Kaggle/Final project'
+DATA_FOLDER = '/Users/linding/github/Coursera/Advanced machine learning - Kaggle/Final project'
 
 trans           = pd.read_csv(os.path.join(DATA_FOLDER, 'sales_train.csv.gz'))
 items           = pd.read_csv(os.path.join(DATA_FOLDER, 'items.csv'))
@@ -483,6 +483,27 @@ xgb_features = ['item_cnt','item_cnt_mean', 'item_cnt_std', 'item_cnt_shifted1',
 xgb_train = X_train[xgb_features]
 xgb_val = X_validation[xgb_features]
 xgb_test = X_test[xgb_features]
+
+model = XGBRegressor(
+    max_depth=8,
+    n_estimators=1000,
+    min_child_weight=300,
+    colsample_bytree=0.8,
+    subsample=0.8,
+    eta=0.3,
+    seed=42)
+
+model.fit(
+    X_train,
+    Y_train,
+    eval_metric="rmse",
+    eval_set=[(X_train, Y_train), (X_valid, Y_valid)],
+    verbose=True,
+    early_stopping_rounds = 10)
+
+
+
+
 
 ####################################
 # A baseline model using catboost
