@@ -28,7 +28,6 @@ from xgboost import XGBRegressor
 from xgboost import plot_importance
 %matplotlib qt
 
-hha
 
 """
 Some Tips
@@ -96,7 +95,7 @@ item_categories = pd.read_csv(os.path.join(DATA_FOLDER, 'item_categories.csv'))
 shops           = pd.read_csv(os.path.join(DATA_FOLDER, 'shops.csv'))
 
 test           = pd.read_csv(os.path.join(DATA_FOLDER, 'test.csv.gz'))
-sample         = pd.read_csv(os.path.join(DATA_FOLDER, 'sample_submission.csv.gz'))
+# sample         = pd.read_csv(os.path.join(DATA_FOLDER, 'sample_submission.csv.gz'))
 
 os.chdir(DATA_FOLDER)
 
@@ -189,8 +188,10 @@ all_shops = trans.loc[:,'shop_id'].unique()
 all_items = trans.loc[:,'item_id'].unique()
 grid = np.array(list(product(*[test_shop_ids, test_item_ids, block_nums])),dtype='int32')
 
+
 # Turn the grid into a dataframe
 grid = pd.DataFrame(np.vstack(grid), columns = index_cols, dtype=np.int32)
+grid.shape
 
 # need to add category, year and month mapping
 grid = pd.merge(grid, item_category_mapping, on='item_id', how='left')
@@ -213,6 +214,8 @@ gb.columns = ['date_block_num', 'shop_id', 'item_id', 'item_cnt_month', 'item_pr
 plt.subplots(figsize=(22, 8))
 sns.boxplot(gb['item_cnt_month'])
 plt.show()
+
+gb['revenue'] = gb['item_price'] * gb['item_cnt_month']
 
 # Clip sales values into the [0, 20] range
 gb['item_cnt_month'][gb['item_cnt_month'] < 0] = 0
@@ -474,18 +477,25 @@ X_train[int_features] = X_train[int_features].astype('int32')
 X_validation[int_features] = X_validation[int_features].astype('int32')
 
 
+def model_performance_sc_plot(predictions, labels, title):
+    # Get min and max values of the predictions and labels.
+    min_val = max(max(predictions), max(labels))
+    max_val = min(min(predictions), min(labels))
+    # Create dataframe with predicitons and labels.
+    performance_df = pd.DataFrame({"Label":labels})
+    performance_df["Prediction"] = predictions
+    # Plot data
+    sns.jointplot(y="Label", x="Prediction", data=performance_df, kind="reg", height=7)
+    plt.plot([min_val, max_val], [min_val, max_val], 'm--')
+    plt.title(title, fontsize=9)
+    plt.show()
+
+
 ##########
 # XGboost
 ##########
-# Use only part of features on XGBoost.
-xgb_features = ['item_cnt','item_cnt_mean', 'item_cnt_std', 'item_cnt_shifted1',
-                'item_cnt_shifted2', 'item_cnt_shifted3', 'shop_mean',
-                'shop_item_mean', 'item_trend', 'mean_item_cnt']
-xgb_train = X_train[xgb_features]
-xgb_val = X_validation[xgb_features]
-xgb_test = X_test[xgb_features]
 
-model = XGBRegressor(
+xg_model = XGBRegressor(
     max_depth=8,
     n_estimators=1000,
     min_child_weight=300,
@@ -494,16 +504,19 @@ model = XGBRegressor(
     eta=0.3,
     seed=42)
 
-model.fit(
+xg_model.fit(
     X_train,
     Y_train,
     eval_metric="rmse",
-    eval_set=[(X_train, Y_train), (X_valid, Y_valid)],
+    eval_set=[(X_train, Y_train), (X_validation, Y_validation)],
     verbose=True,
     early_stopping_rounds = 10)
 
 
+xgboost_val_pred = xg_model.predict(X_validation)
+xgboost_test_pred = xg_model.predict(X_test)
 
+model_performance_sc_plot(xgboost_val_pred, Y_validation, 'Validation')
 
 
 ####################################
@@ -545,18 +558,6 @@ catboost_train_pred = catboost_model.predict(X_train)
 catboost_val_pred = catboost_model.predict(X_validation)
 catboost_test_pred = catboost_model.predict(X_test)
 
-def model_performance_sc_plot(predictions, labels, title):
-    # Get min and max values of the predictions and labels.
-    min_val = max(max(predictions), max(labels))
-    max_val = min(min(predictions), min(labels))
-    # Create dataframe with predicitons and labels.
-    performance_df = pd.DataFrame({"Label":labels})
-    performance_df["Prediction"] = predictions
-    # Plot data
-    sns.jointplot(y="Label", x="Prediction", data=performance_df, kind="reg", height=7)
-    plt.plot([min_val, max_val], [min_val, max_val], 'm--')
-    plt.title(title, fontsize=9)
-    plt.show()
 
 # model_performance_sc_plot(catboost_train_pred, Y_train, 'Train')
 model_performance_sc_plot(catboost_val_pred, Y_validation, 'Validation')
@@ -582,7 +583,7 @@ plt.show()
 # Creating the prediction baseline with Oct 15 sales
 ###########################################################
 
-pred = pd.DataFrame(catboost_test_pred, columns=['item_cnt_month'])
+pred = pd.DataFrame(xgboost_test_pred, columns=['item_cnt_month'])
 test['item_cnt_month'] = pred.clip(0, 20)
 
 # File to submit
