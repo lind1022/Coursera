@@ -4,13 +4,13 @@
 import tensorflow.compat.v1 as tf
 import numpy as np
 import os
+print('TF version', tf.__version__)
+
 
 DATA_FOLDER = '/Users/lin/github/Coursera/Intro to NN'
 os.chdir(DATA_FOLDER)
 
 tf.disable_eager_execution()
-
-
 
 
 x = tf.placeholder(tf.float32, (30, 10))
@@ -201,10 +201,6 @@ sum_node = two_node + three_node
 print_two_node = tf.Print(two_node, [two_node, three_node, sum_node])
 sess = tf.Session()
 print(sess.run(sum_node))
-
-
-
-
 
 
 
