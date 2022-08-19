@@ -52,7 +52,7 @@ NLP - 1
 sad - 2
 not - 1
 ```
-<img src="NLP/pics/voc_freq.png" width="500" height='300'>
+<img src="pics/voc_freq.png" width="500" height='300'>
 
 
 
