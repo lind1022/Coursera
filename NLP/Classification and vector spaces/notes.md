@@ -54,7 +54,10 @@ not - 1
 ```
 <img src="pics/voc_freq.png" width="500" height='300'>
 
+## Feature Extraction
+Freqs: dictionary mapping from (word, class) to frequency
 
+<img src="pics/feat_extract.png">
 
 
 
