@@ -44,5 +44,13 @@ It can be hard to express relative importance of these 3 areas, it might be help
 1. Peakedness: how concentrated the distrbution of the prediction workload is. E.g. model predicts next word based on words typed is highly peaked because small number of words account for majority of words used. Model predicts quarterly revenue for all sales verticles will be run on same verticles with same frequency, so it will be flat.
 2. Cardinality: number of values in a set, in this case the set is all possible things we need to predict for. Low Cardinality example: model predicts sales revenue given organisation division number. High Cardinality example, model predicts life time value for e-commerce platform because number of users and number of characteritics of each user are quite large.
 
-
 <img src="pics/serving_decisions.png" width="500" height='300'>
+
+- When cardinality is low, we can store entire expected prediction workload. For example, store the predicted sales revenue for all divisions in a table and use **static serving**.
+- When cardinality is high, because the size of input space is large and workload is not very peacked, could use **dynamic** serving.
+- Statically cache some of the prediction and responding on-demand for the long tail. It works best when distribution is sufficiently peaked. The most frequently requested predictions cached, and long tail (less frequently requested) computed on demand.
+
+#### Changes to be made for **static serving**
+1. Change the call to AI platform from an online prediction job to batch prediction job
+2. Ensure the model accepted and passed through keys as input
+3. Write predictions to a data warehouse
