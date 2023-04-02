@@ -133,8 +133,8 @@ Q7: Concept drift
 
 | Constraints | Input/output | CPU | Memory |
 | ----------- |------------| ---- | -------|
-| Commonly Occurs | Large inputs <br> input requires parsing; small models| Expensive computations; Underpowered Hardware | Larger Number of inputs; complex model |
-| Take Action | Store efficiently; parallelize reads; consider batch size | Train on faster accel; upgrade processor; run on TPUs; simplify model | Add more memory; use fewer layers; reduce batch size
+| Commonly Occurs | Large inputs <br> Input requires parsing<br> small models| Expensive computations<br> Underpowered Hardware | Larger Number of inputs<br> complex model |
+| Take Action | Store efficiently<br> parallelize reads<br> consider batch size | Train on faster accel<br> upgrade processor<br> run on TPUs<br> simplify model | Add more memory<br> use fewer layers<br> reduce batch size
 
 
 
