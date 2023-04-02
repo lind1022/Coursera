@@ -1,3 +1,5 @@
+# Designing Adaptable ML systems
+
 ## Adapting to change
 
 These often change:
@@ -60,13 +62,78 @@ Production can diverge or drift from the baseline data over time due to changes 
 - Label drift: a change in P(Y Ground Truth) is a shift in the model's output or label distribution.
 
 
+## Actions to mitigate concept drift
+- Both data drift and concept drift lead to model drift
+- Examples for data drift: changes in spamming behaviour, rule update in the app, selection bias, non-stationary environment
+- Examples for concept drift: e-commerce apps (people’s preference do change), sensors (IOT), movie recommendation, demand forecasting (heavily relying on time, which is a major contributor to concept drift)
+
+If diagnose data drift: enough of the data needs to be relabelled to introduce new classes and the model retrained
+If diagnose concept drift: old data needs to be relabelled and the model needs to be retrained
+
+## Design your system to detect changes
+
+Once change detected, can:
+1. Discard current model
+2. Use existing state as a starting point for a better model, can update the model by using a most recent historical data
+3. Use ensemble to train a new model in order to correct predictions from prior models. The prior knowledge learnt from the concept is used to improve the learning of the new concept. Ensemble learns the old concept with high diversity are trained with the low diversity on the new concept.
+
+Tensorflow Data Validation: a library for validating machine learning data.
+
+2 use cases:
+- Validation of continuous arriving data
+- Training/serving skew detection
 
 
+To find problems in the data, common problems include:
+- Missing data
+- Labels treated as features
+- Features with values outside an expected range
+- Data anomalies
+
+To engineer more effective feature sets, identify:
+- Informative features
+- Redundant features
+- Features that vary so widely in scale that they may slow learning
+- Features with little or no unique predictive information
+
+Distribution skew: occurs when the distribution of feature values for training data is **significantly different** from serving data. Need to review if there is any difference between training and serving (prediction) data.
 
 
+## Training & serving skew
+The differences in performance that occur as a function of differences in environment:
+1. A discrepancy between how you handle data in the training and serving pipelines
+2. A change in the data between when you train and when you serve
+3. A feedback loop between your model and your algorithm
+
+## Diagnosing a production model
+Q1: unversity-ranking, book-recommendation
+Q2: prediction quality
+Q3: Development and production environments are different
+Q4: old concept that incrementally changes to a new concept over a period of time
+Q5: Polylithic programs
+Q6: Data Validation
+Q7: Concept drift
 
 
+# Designing High-Performance ML Systems
+- Not all models are identical, for some models we focus on increasing on I/O performance, for others we focus on squeezing out more computational speed.
+- Model training time
+- Model training budget, may train faster on better hardware but hardware might cost more, may need to choose slightly slower infrastructure.
 
+## 3 levers for training budget: time, cost and scale
+- Can choose between training on a single more expensive machine or multiple cheaper machines. May need to write code differently.
+- The larger the training data, the better the model performance, but there will be diminishing returns as the data gets larger. Time and cost budget may dictate the data set size.
+- May have the choice of start training from an earlier model checkpoint and training just for a few steps. Converge faster than training from scratch each time.
+
+## Tuning Performance to reduce training time, reduce cost, and increase scale
+- Model training speed will be bound by one of the below:
+  1. Input/output: how fast we can get the data into the model in each training step
+  2. CPU: how fast we can compute gradient in each training step
+  3. Memory: how many weights can we hold in memory so that we can compute matrix multiplication in memory or do we use GPU.
+
+| Constraints | Input/output | CPU | Memory |
+| ----------- |------------| ---- | -------|
+| Commonly Occurs | Large inputs | Expensive computations | Larger Number of inputs |
 
 
 
