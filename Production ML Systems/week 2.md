@@ -129,14 +129,49 @@ Q7: Concept drift
 - Model training speed will be bound by one of the below:
   1. Input/output: how fast we can get the data into the model in each training step
   2. CPU: how fast we can compute gradient in each training step
-  3. Memory: how many weights can we hold in memory so that we can compute matrix multiplication in memory or do we use GPU.
+  3. Memory: how many weights can we hold in memory so that we can compute matrix multiplication in memory or do we use GPU or TPU
 
 | Constraints | Input/output | CPU | Memory |
 | ----------- |------------| ---- | -------|
-| Commonly Occurs | Large inputs <br> Input requires parsing<br> small models| Expensive computations<br> Underpowered Hardware | Larger Number of inputs<br> complex model |
-| Take Action | Store efficiently<br> parallelize reads<br> consider batch size | Train on faster accel<br> upgrade processor<br> run on TPUs<br> simplify model | Add more memory<br> use fewer layers<br> reduce batch size
+| Commonly Occurs | Large inputs <br> Input requires parsing<br> Small models| Expensive computations<br> Underpowered Hardware | Larger Number of inputs<br> Complex model |
+| Take Action | Store efficiently<br> Parallelize reads<br> Consider batch size | Train on faster accelerator<br> Upgrade processor<br> run on TPUs<br> Simplify model | Add more memory<br> use fewer layers<br> Reduce batch size
+
+## Prediction-time performance
+- Batch prediction: very similar considerations with training performance.
+  1. Time: how long does it take to do all predictions
+  2. Cost: what are we predicting and how much do we pre-compute
+  3. Scale: do we have to do this on a single machine or can do distribute it to multiple workers, what hardware are available on these workers
+- Only prediction (streaming): different considerations because end user is waiting for the prediction
+  1. Single machine: carry out the computation graph for one end user on one machine
+  2. Microservice: almost always scale out prediction on multiple workers
+  3. QPS: how many queries the model can handle in a second
+
+When design for high performance, we need to consider training and prediction separately, especially in online predictions.
 
 
+## Distributed training
+The growth in algorithm complexity and data size means more complex models and large data volumes, distributed system is a necessity when it comes to machine learning.
+
+### Distributed training architectures
+2 types of distributed training architectures:
+<img src="pics/model_parallelism.png" width="500" height='300'>
+
+1. Data parallelism: model agnostic; run the same model and computation on every device but train each of them using different data samples. Each device computes loss and gradients based on training samples.
+
+<img src="pics/parallelisim.png" width="500" height='300'>
+
+  - **Synchronous Allreduce architecture**: each worker device computes the forward and backward passes through the model on a different slice of the input data
+    1) Each training node exchanges the gradients via an AllReduce operation at the end of each training iteration.
+    2) The optimizer then performs the parameter updates with these reduced gradients, keeping the devices in sync.
+    3) Because each worker cannot proceed to the next training step until all the other workers have finished the current step, this gradient calculation becomes the main overhead in distributed training for synchronous strategies.
+    4) Synchronous approach should be considered for dense models (like BERT, Bidirectional Encoder Representations) which contain many features and thus consumes more memory.
+  - **Asynchronous**: no device waits for the updates to the model from any other device. The device can run independently and share results as peers or communicate through one or more central servers known as parameter servers.
+    1) Each worker independently fetches the latest parameters from the parameter servers and computes gradients based on a subset of training samples, it then sends the gradients back to the parameter server which then updates its copy of the parameters with those gradients.
+    2) It scales well to a large number of workers where training workers may be pre-emptied by higher priority job, or a machine may go down for maintenance. This doesn't hurt scaling because workers are not waiting for each other.
+    3) Downside is that workers can get out of sync, they compute parameters updates based on stale values and can delay convergence.
+    4) Great for models use sparse data, contain fewer features, consume less memory and can run just a cluster of CPUs. For dense model, the parameter server transfers the whole model each step and this can create a lot of network pressure.
+
+2. Model Parallelism: when the model is too big to fit on one device memory, we can divide it into smaller parts on multiple devices and then compute over the same training samples. It feeds every process the same data but supplies a different model to it. "Multiple program, same data". Multiple GPUs do not need to synchronise parameter values. Need special care when assigning different layers to different GPUs. Gradients obtained from each model are accumulated after a backward process, parameters and synchronised and updated.
 
 
 
